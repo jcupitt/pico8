@@ -33,6 +33,18 @@ function explosion(x,y)
  end
 end
 
+function spark(x,y)
+ s=add_particle(x,y)
+ a=rnd()
+ s.dx=rnd()*sin(a)
+ s.dy=rnd()*cos(a)
+ s.l=30*rnd()+10
+ s.dc=1
+ s.c=15*rnd()
+ s.s=1
+ return s
+end
+
 function splat(x,y)
  if(#particles>200) return
  for n=1,50+10*rnd() do
@@ -75,23 +87,23 @@ function add_actor(x,y)
  a={}
  a.x=x
  a.y=y
- a.f=0
  a.dx=0
  a.dy=0
+ a.ddx=0
+ a.ddy=0
+ a.f=0
  a.sp=1
  add(actors,a)
  return a
 end
 
 function collide(a1,a2)
- return abs(a1.x-a2.x)<8 and abs(a1.y-a2.y)<8
+ return abs(a1.x-a2.x)<6 and abs(a1.y-a2.y)<6
 end
 
 function update_eye(e)
- e.dx-=e.dx/3
- e.dy+=1
  if(e.x<0 or e.x>120) e.dx*=-1
- e.y=min(e.y,120)
+ if(e.y>=120) e.y=120 e.ddy=0 e.dy=0 e.dx=0
  if(e.y==120 and not e.splat) sfx(28) e.splat=true 
  e.l-=1
  if(e.l<0) del(actors,e)
@@ -99,8 +111,9 @@ end
 
 function add_eye(x,y)
  e=add_actor(x,y)
- e.dx=20*rnd()-10
+ e.dx=2*rnd()-1
  e.dy=4*rnd()-10
+ e.ddy=1
  e.sp=11
  e.l=50
  e.update=update_eye
@@ -112,17 +125,19 @@ function kill()
  splat(oct.x+4,oct.y+8)
  if alive then
   for i=1,2 do
-   e=add_eye(oct.x,oct.y)
+   e=add_eye(oct.x+4,oct.y-4)
    e.dx+=oct.dx
    e.dy+=oct.dy
   end
   sfx(34)
+  if(score>high_score) high_score=score
  end
  alive=false
 end
 
 function update_nana(n)
  if(n.x<0 or n.x>120) n.dx*=-1
+
  if it<15 and collide(n,oct) then
   kill()
   del(actors,n)
@@ -144,23 +159,32 @@ function explode(b)
  explosion(b.x+4,b.y+4)
  d1=b.x-oct.x d2=b.y-oct.y
  d=sqrt(d1*d1+d2*d2)
- if d<30 then
-  oct.dx+=40/(oct.x-b.x)
-  oct.dy+=0.5/(oct.y-b.y)
+ if d<20 then
+  oct.dx+=20/(oct.x-b.x)
+  oct.dy+=10/(oct.y-b.y)
+  oct.y-=1
  end
  del(actors,b) 
 end
 
 function update_bomb(b)
+ if rnd()<0.2 then 
+  s=spark(b.x+8,b.y)
+  s.dx+=b.dx
+  s.dy+=b.dy
+ end
+ 
+ b.f+=1
+ b.f%=2
+
  if(b.x<0 or b.x>120) b.dx*=-1
+
  if it<15 and collide(b,oct) then
   explode(b)
   kill()
  elseif b.y>120 then
   explode(b)
  end
- b.f+=1
- b.f%=2
 end
 
 function add_bomb()
@@ -173,41 +197,55 @@ function add_bomb()
 end
 
 function update_octo(o)
- o.dx=max(o.dx,-10) 
- o.dx=min(o.dx,10)
- o.dy=max(o.dy,-10) 
- o.dy=min(o.dy,10)
- 
- ddx=-o.dx/3
+ -- gravity
+ o.ddy=1
+
  if alive then
-  if(btn(1) and o.dx<=2) ddx=1
-  if(btn(0) and o.dx>=-2) ddx=-1
-  if(btn(2) and o.y==120) o.dy-=10
+  if o.y<120 then
+   -- air control
+   if(btn(1)) o.dx+=1
+   if(btn(0)) o.dx-=1
+  else
+   -- ground control
+   o.dx=0
+   o.dy=0
+   if(btn(1)) o.dx=2
+   if(btn(0)) o.dx=-2
+   if(btn(2) or btn(5)) o.y=119 o.dy=-8
+  end
+
   it-=1
   if(it<0) it=0
   if btn(4) and it==0 then
    ink(o.x+4,o.y+4)
    it=30
   end
+ else
+  if(o.y>=120) o.dx=0 o.dy=0
  end
 
- if(abs(ddx)>0.5 and o.f>8) sfx(15)
- o.dx+=ddx
+ if abs(o.dx)>0.5 then
+  o.f+=1
+  if o.f>7 then
+   o.f=0
+   if(o.y==120) sfx(15)
+  end
+ end
+
+ o.dx=max(o.dx,-2) 
+ o.dx=min(o.dx,2)
+ o.dy=max(o.dy,-10) 
+ o.dy=min(o.dy,10)
+
  if(o.x>120) o.x=120
  if(o.x<0) o.x=0
-
- o.dy+=1		
- if(o.y>120) o.y=120 o.dy=0
-
- o.f+=o.dx
- o.f%=16
-		
+ if(o.y>=120) o.y=120 o.dy=0 o.ddy=0 o.ddx=0
 end
 
 function draw_octo(o)
  if alive then
   sp=7
-  if(abs(o.dx)>0.1) sp=1+o.f/6
+  if(abs(o.dx)>0.1) sp=1+o.f/2
   if(o.y<120) sp=8
   flip_x=(o.dx>0)
   spr(sp,o.x,o.y,1,1,flip_x)
@@ -224,9 +262,13 @@ function add_octo()
 end
 
 function update_actor(a)
- a.x+=a.dx
- a.y+=a.dy
  a:update()
+
+ a.dx+=a.ddx
+ a.dy+=a.ddy		
+
+ a.x+=a.dx
+ a.y+=a.dy		
 end
 
 function _update()
@@ -235,20 +277,21 @@ function _update()
 
  nt-=1
  if nt<0 then
-  if(alive) s+=1 
-  if(s>100) s=100
-  nt=rnd()*(100-s)
-  n=add_nana()
-  if rnd()>0.5 then
+  if(alive) score+=1 
+  if(score>100) score=100
+  nt=10+rnd()*(100-score)
+  if rnd()>score/100 then
+   add_nana()
    add_nana()
   else
+   add_bomb()
    add_bomb()
   end
  end
 
  if not alive then 
   dt-=1
-  if(dt<0) alive=true s=0
+  if(dt<0) alive=true score=0
  end
 
 end
@@ -256,7 +299,7 @@ end
 -- start draw
 
 function draw_particle(p)
- rectfill(p.x,p.y,p.x+p.s,p.y+p.s,p.c)
+ rectfill(p.x,p.y,p.x+p.s-1,p.y+p.s-1,p.c)
 end
 
 function draw_actor(a)
@@ -279,10 +322,13 @@ function _draw()
  foreach(actors,draw_actor)
 
  color(15)
- print(s,100,8)
+ print("high score",10,2)
+ print(high_score,10,8)
+ print("score",100,2)
+ print(score,100,8)
 
  if not alive then
-  ty=20
+  ty=40
   ctext("octo the banana-dodging octopus")
   ctext("")
   ctext("use left/right to dodge")
@@ -299,7 +345,8 @@ actors={}
 particles={}
 
 -- game state
-s=0
+high_score=0
+score=0
 nt=rnd()*10
 alive=false
 t=100
