@@ -1,3 +1,5 @@
 # pico8
 
-various pico8 experiments
+Various pico8 experiments.
+
+Go to https://jcupitt.github.io/pico8 to play the games in your browser.
