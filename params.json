@@ -1,0 +1,6 @@
+{
+  "name": "Pico8",
+  "tagline": "various pico8 experiments",
+  "body": "### pico8\r\n\r\nVarious small pico8 games. \r\n\r\n* [Octo the banana-dodging octopus](octo/octo.html)\r\n\r\nGo to the [main github page](https://github.com/jcupitt/pico8) for this repository to view and download the sources.",
+  "note": "Don't delete this file! It's used internally to help with page regeneration."
+}
