@@ -34,10 +34,11 @@ function explosion(x, y, m)
  for n = 1, m + m * 2 * rnd() do
   local p = add_particle(x, y)
   local a = rnd()
+  local s = 2 + 0.02 * m
 
-  p.dx = (2 + 0.2 * m) * rnd() * sin(a)
-  p.dy = (2 + 0.2 * m) * rnd() * cos(a)
-  p.l = 30 * rnd() + 10
+  p.dx = s * rnd() * sin(a)
+  p.dy = s * rnd() * cos(a)
+  p.l = 40 * rnd() + 5
   p.dc = 1
   p.c = 15 * rnd()
   p.s = 3 * rnd()
@@ -48,8 +49,8 @@ function jet(x, y, a)
  local s = add_particle(x, y)
 
  a += (rnd() - 0.5) * 0.1
- s.dx = 2 * sin(a)
- s.dy = 2 * cos(a)
+ s.dx = sin(a)
+ s.dy = cos(a)
  s.l = 10 * rnd() + 10
  s.dc = 1
  s.c = 15 * rnd()
@@ -59,7 +60,7 @@ function jet(x, y, a)
 end
 
 function update_particle(p)
- p.dx += -p.dx / 10
+ p.dx += p.ddx - p.dx / 10
  p.dy += p.ddy - p.dy / 10
  p.x += p.dx
  p.y += p.dy
@@ -316,12 +317,12 @@ end
 function add_bullet(x, y, a)
  local b = add_actor(x, y)
 
- b.dx = 2 * cos(a)
- b.dy = 2 * sin(a)
+ b.dx = cos(a)
+ b.dy = sin(a)
  b.x += b.dx
  b.y += b.dy
  b.sp = 11
- b.l = 50
+ b.l = 80
  b.r = 2
  b.update = update_bullet
 
@@ -350,7 +351,7 @@ end
 
 function kill_ship()
  alive = false
- dead_timer = 100
+ dead_timer = 200
  explosion(ship.x + 4, ship.y + 4, 200)
  sfx(8)
 end
@@ -389,19 +390,19 @@ function add_bomb(x, y)
  local b = add_actor(x, y)
 
  b.sp = 9
- b.l = 200
+ b.l = 400
  b.update = update_bomb
 
  return b
 end
 
 function update_ship(s)
- s.ddx = -0.02 * s.dx
- s.ddy = -0.02 * s.dy
+ s.ddx = -0.01 * s.dx
+ s.ddy = -0.01 * s.dy
 
  if alive then
   if btn(3) then
-   local t = 0.07
+   local t = 0.03
 
    if btn(1) then 
     s.dx -= t * cos(s.angle + 0.25) 
@@ -420,20 +421,20 @@ function update_ship(s)
     p.dx += s.dx
    end
   else
-   if(btn(1)) s.angle -= 1 / 32
-   if(btn(0)) s.angle += 1 / 32
+   if(btn(1)) s.angle -= 1 / 64
+   if(btn(0)) s.angle += 1 / 64
   end
 
   if btn(2) then 
-   s.dx += 0.1 * cos(s.angle) 
-   s.dy += 0.1 * sin(s.angle)
+   s.dx += 0.01 * cos(s.angle) 
+   s.dy += 0.01 * sin(s.angle)
 
    local p = jet(s.x + 4, s.y + 4, 1 - s.angle + 0.25)
    p.dy += s.dy
    p.dx += s.dx
   end
 
-  max_speed(s, 2)
+  max_speed(s, 1)
 
   s.bt = max(0, s.bt - 1)
   if btn(4) and s.bt == 0 then 
@@ -441,7 +442,7 @@ function update_ship(s)
    b.dx += s.dx
    b.dy += s.dy
 
-   s.bt = 10
+   s.bt = 20
   end
 
   s.bm = max(0, s.bm - 1)
@@ -450,7 +451,7 @@ function update_ship(s)
    b.dx += s.dx
    b.dy += s.dy
 
-   s.bm = 20
+   s.bm = 40
   end
  end
 
@@ -495,8 +496,8 @@ end
 function update_octo(m)
  m.f = (m.f + 0.2) % 4
 
- m.dx += (ship.x - m.x) * 0.0005
- m.dy += (ship.y - m.y) * 0.0005
+ m.dx += (ship.x - m.x) * 0.0002
+ m.dy += (ship.y - m.y) * 0.0002
  max_speed(m, 10)
 end
 
@@ -519,32 +520,34 @@ end
 function update_centi(m)
  m.f = (m.f + 0.1) % 2
 
- m.dx += (ship.x - m.x) * 0.0005
- m.dy += (ship.y - m.y) * 0.0005
+ m.dx += (ship.x - m.x) * 0.0002
+ m.dy += (ship.y - m.y) * 0.0002
  max_speed(m, 10)
 end
 
 function update_segment(s)
  local f = s.following
 
- if not f.alive then
-  explosion(s.x + 4, s.y + 4, 5) 
-  kill_monster(s)
- end
+ if f then
+  add(s.queue, {f.x, f.y, f.dx, f.dy})
+  if #s.queue > 10 then
+   local p = s.queue[1]
 
- add(s.queue, {f.x, f.y})
- if #s.queue > 5 then
-  local p = s.queue[1]
+   s.x = p[1]
+   s.y = p[2]
+   s.dx = p[3]
+   s.dy = p[4]
 
-  s.x = p[1]
-  s.y = p[2]
+   del(s.queue, p)
+  end
 
-  del(s.queue, p)
- end
-
- if alive and pyth(s, ship) < 4 then
-  kill_ship()
-  kill_monster(s)
+  if not f.alive then
+   s.following = nil
+   s.l = 50
+  end
+ else
+  s.l = max(0, s.l - 1)
+  if(s.l == 0) kill_monster(s) explosion(s.x + 4, s.y + 4, 10) 
  end
 end
 
@@ -554,7 +557,8 @@ function add_segment(h)
  s.following = h
  s.alive = true
  s.queue = {}
- s.update = update_segment
+ s.update = update_monster
+ s.sub_update = update_segment
  s.sp = 41 
  add(monsters, s)
 
@@ -569,7 +573,7 @@ function add_centi(x, y)
  m.sp = 39 
 
  x = m
- for i = 1, 8 do
+ for i = 1, 15 do
   s = add_segment(x)
   x = s
  end
@@ -634,11 +638,11 @@ function update_screen()
   ty += 48 * sin(ship.angle)
  end
 
- screen_dx += (tx - 64 - screen_x) * 0.2
- screen_dy += (ty - 64 - screen_y) * 0.2
+ screen_dx += (tx - 64 - screen_x) * 0.1
+ screen_dy += (ty - 64 - screen_y) * 0.1
 
- screen_dx *= 0.3
- screen_dy *= 0.3
+ screen_dx *= 0.2
+ screen_dy *= 0.2
 
  screen_x += screen_dx
  screen_y += screen_dy
@@ -745,7 +749,7 @@ generate_world()
 
 -- game state
 score = 0
-dead_timer = 100
+dead_timer = 200
 screen_x = 4
 screen_y = 4
 screen_dx = 0
@@ -759,10 +763,10 @@ music(37)
 __gfx__
 0000000003333330033333300333333003333330033333300000800003333330003333000007000070000070000000000000000004a44a400000000000000000
 0000000033333333333337733333333337733333333333330000080837733773033333300997990007999700000000000076670004a44a400000000000000000
-0000000037733773333331733773377331733333311331130003388037133173371331730988890009888900000000000766766044a44a440000000000000000
-00000000317331733773333331733173333337733333333300333888333333333773377377878770098789000007700006676650aaaaaaaa0000000000000000
-00000000033333300173333003333330033331700333333003333380033333303333333309888900098889000007700000766500444994440000000000000000
-00000000003333000033330000333300003333000033330033333300003333000033330009979900079997000000000000065000444994440000000000000000
+0000000037733773333331733773377331733333311331130003388037133173371331730988890009888900000800000766766044a44a440000000000000000
+00000000317331733773333331733173333337733333333300333888333333333773377377878770098789000009a80006676650aaaaaaaa0000000000000000
+0000000003333330017333300333333003333170033333300333338003333330333333330988890009888900008a900000766500444994440000000000000000
+00000000003333000033330000333300003333000033330033333300003333000033330009979900079997000000800000065000444994440000000000000000
 00000000030000300300030000300030003000300300003033333000003003000030030000070000700000700000000000000000444444440000000000000000
 00000000300003000030003000300030000300030030030088333330033003300030030000000000000000000000000000000000444444440000000000000000
 44444444444444440000000006600000444444600644444406444444000000004444446044444444064444600660000000000000066600000000000000000000
