@@ -1,81 +1,98 @@
 pico-8 cartridge // http://www.pico-8.com
 version 8
 __lua__
+-- mega-roids
+-- jcupitt
+
 -- particle system
+
 particles={}
 
-function add_particle(x,y)
- p={}
- p.x=x
- p.y=y
- p.dx=0
- p.dy=0
- p.ddy=0
- p.l=30
- p.dc=0
- p.c=0
- p.s=1
- add(particles,p)
+function add_particle(x, y)
+ local p = {}
+
+ p.x = x
+ p.y = y
+ p.dx = 0
+ p.dy = 0
+ p.ddx = 0
+ p.ddy = 0
+ p.l = 30		-- life
+ p.dc = 0		-- colour delta
+ p.c = 0
+ p.s = 1		-- size
+
+ add(particles, p)
+
  return p
 end
 
-function explosion(x,y,m)
- sfx(8)
- if(#particles>200) return
+-- m == magnitude
+function explosion(x, y, m)
+ if(#particles > 200) return
+
  for n = 1, m + m * 2 * rnd() do
-  p=add_particle(x,y)
-  a=rnd()
-  p.dx = (2 + 0.2 * m) * rnd()*sin(a)
-  p.dy = (2 + 0.2 * m) * rnd()*cos(a)
-  p.l=30*rnd()+10
-  p.dc=1
-  p.c=15*rnd()
-  p.s=3*rnd()
+  local p = add_particle(x, y)
+  local a = rnd()
+
+  p.dx = (2 + 0.2 * m) * rnd() * sin(a)
+  p.dy = (2 + 0.2 * m) * rnd() * cos(a)
+  p.l = 30 * rnd() + 10
+  p.dc = 1
+  p.c = 15 * rnd()
+  p.s = 3 * rnd()
  end
 end
 
-function jet(x,y,a)
- s=add_particle(x,y)
- a+=(rnd() - 0.5) * 0.1
- s.dx=2*sin(a)
- s.dy=2*cos(a)
- s.l=10*rnd()+10
- s.dc=1
- s.c=15*rnd()
- s.s=1
+function jet(x, y, a)
+ local s = add_particle(x, y)
+
+ a += (rnd() - 0.5) * 0.1
+ s.dx = 2 * sin(a)
+ s.dy = 2 * cos(a)
+ s.l = 10 * rnd() + 10
+ s.dc = 1
+ s.c = 15 * rnd()
+ s.s = 1
+
  return s
 end
 
 function update_particle(p)
- p.dx+=-p.dx/10
- p.dy+=p.ddy-p.dy/10
- p.x+=p.dx
- p.y+=p.dy
- p.c=(p.c+p.dc)%15
- p.l-=1
- if(p.l<0) del(particles,p)
+ p.dx += -p.dx / 10
+ p.dy += p.ddy - p.dy / 10
+ p.x += p.dx
+ p.y += p.dy
+ p.c = (p.c + p.dc) % 15
+ p.l -= 1
+
+ if(p.l < 0) del(particles, p)
 end
 
 function draw_particle(p)
- x = p.x - screen_x
- y = p.y - screen_y
- rectfill(x,y,x+p.s-1,y+p.s-1,p.c)
+ local x = p.x - screen_x
+ local y = p.y - screen_y
+
+ rectfill(x, y, x + p.s - 1, y + p.s - 1, p.c)
 end
 
 -- star field
 stars = {}
 
 function draw_star(s)
- x = (s.x - screen_x / 2) % 128
- y = (s.y - screen_y / 2) % 128
- rectfill(x, y, x + 1, y + 1, 1)
+ local x = (s.x - screen_x / 2) % 128
+ local y = (s.y - screen_y / 2) % 128
+
+ rectfill(x, y, x, y, 1)
 end
 
 function add_stars()
- for i=1,20 do
-  s = {}
-  s.x = rnd() * 128
-  s.y = rnd() * 128
+ for i = 1, 20 do
+  local s = {}
+
+  s.x = flr(rnd() * 128)
+  s.y = flr(rnd() * 128)
+
   add(stars, s)
  end
 end
@@ -83,69 +100,71 @@ end
 -- world building
 
 function circle(cx, cy, r, v)
- nd = 0
- for y=cy-r,cy+r do
-  for x=cx-r,cx+r do
+ local n = 0
+
+ for y = cy - r, cy + r do
+  for x = cx - r, cx + r do
    dx = cx - x
    dy = cy - y 
-   d = sqrt(dx*dx + dy*dy)
-   if d<r then
-    if(mget(x, y) == 16) nd += 1
+   d = sqrt(dx * dx + dy * dy)
+   if d < r then
+    if(mget(x, y) == 16) n += 1
     mset(x, y, v)
    end
   end
  end
 
- return nd
+ return n
 end
 
 function worm(x, y, d)
- rad = 1
- l = 10 + 60 * rnd()
- for j=1,l do
-  circle(x, y, rad, 0)
+ local r = 1
+ local l = 10 + 60 * rnd()
+
+ for j = 1, l do
+  circle(x, y, r, 0)
   d += (rnd() - 0.5) / 10
   x += cos(d)
   y += sin(d)
-  rad += rnd() - 0.5
-  rad = max(min(rad, 5), 1.5)
+  r += rnd() - 0.5
+  r = max(min(r, 5), 1.5)
  end
 end
 
 edges = {[0] = 30, 29, 28, 18, 27, 31, 19, 23, 26, 21, 32, 22, 20, 25, 24, 17}
 
 function world_edges(x1, y1, x2, y2)
- local n_diamonds = 0
+ local n = 0
 
  for y = y1, y2 do
   for x = x1, x2 do
    if mget(x, y) != 0 then
-    local bits = 0
+    local b = 0
 
-    if(mget(x + 1, y) != 0) bits += 1
-    if(mget(x, y + 1) != 0) bits += 2
-    if(mget(x - 1, y) != 0) bits += 4
-    if(mget(x, y - 1) != 0) bits += 8
-    if bits != 15 then
-     if(mget(x, y) == 16) n_diamonds += 1
-     mset(x, y, edges[bits])
+    if(mget(x + 1, y) != 0) b += 1
+    if(mget(x, y + 1) != 0) b += 2
+    if(mget(x - 1, y) != 0) b += 4
+    if(mget(x, y - 1) != 0) b += 8
+    if b != 15 then
+     if(mget(x, y) == 16) n += 1
+     mset(x, y, edges[b])
     end
    end
   end
  end
 
- return n_diamonds
+ return n
 end
 
 function generate_world()
- for y=0,63 do
-  for x=0,127 do
-   dx = 64 - x
-   dy = 32 - y
-   d = sqrt(dx*dx + 4 * dy*dy)
+ for y = 0, 63 do
+  for x = 0, 127 do
+   local dx = 64 - x
+   local dy = 64 - 2 * y
+   local d = sqrt(dx * dx + dy * dy)
 
-   r = 0
-   if d<63 then
+   local r = 0
+   if d < 63 then
     if rnd() < 0.01 then 
      r = 16
     else
@@ -157,10 +176,11 @@ function generate_world()
   end
  end
 
- for i=1,20 do
-  a = rnd()
-  sx = 64 + 63 * cos(a)
-  sy = 32 + 32 * sin(a)
+ for i = 1, 20 do
+  local a = rnd()
+  local sx = 64 + 63 * cos(a)
+  local sy = 32 + 32 * sin(a)
+
   worm(sx, sy, a + 0.5)
  end
 
@@ -169,95 +189,109 @@ end
 
 -- start actors
 
-actors={}
+actors = {}
 
-function add_actor(x,y)
- a={}
- a.x=x
- a.y=y
- a.dx=0
- a.dy=0
- a.ddx=0
- a.ddy=0
- a.f=0
- a.sp=1
- a.r=2.5
- add(actors,a)
+function add_actor(x, y)
+ local a = {}
+
+ a.x = x
+ a.y = y
+ a.dx = 0
+ a.dy = 0
+ a.ddx = 0
+ a.ddy = 0
+ a.sp = 1	-- base sprite number
+ a.f = 0	-- frame of animation
+ a.r = 2.5	-- radius
+
+ add(actors, a)
+
  return a
 end
 
-function collide(a1,a2)
- d = a1.r + a2.r
- return abs(a1.x - a2.x) < r and abs(a1.y - a2.y) < r
+function pyth(a, b)
+ local dx = a.x - b.x
+ local dy = a.y - b.y
+
+ return sqrt(dx * dx + dy * dy)
 end
 
 function test_map(x, y)
- return(mget(flr(x/8), flr(y/8)) != 0)
+ return mget(flr(x / 8), flr(y / 8)) != 0
 end
 
 function update_bullet(b)
- b.l-=1
- if(b.l<0) del(actors,b)
+ b.l -= 1
+ if(b.l < 0) del(actors, b)
 
- cx = b.x + 4
- cy = b.y + 4
+ local cx = b.x + 4
+ local cy = b.y + 4
  if(test_map(cx, cy)) explosion(cx, cy, 5) del(actors, b)
 end
 
-function add_bullet(x,y,a)
- b=add_actor(x,y)
- b.dx=2*cos(a)
- b.dy=2*sin(a)
+function add_bullet(x, y, a)
+ local b = add_actor(x, y)
+
+ b.dx = 2 * cos(a)
+ b.dy = 2 * sin(a)
  b.x += b.dx
  b.y += b.dy
- b.sp=11
- b.l=50
- b.update=update_bullet
+ b.sp = 11
+ b.l = 50
+ b.update = update_bullet
+
  return b
 end
 
 function update_diamond(d)
- cx = d.x + 4
- cy = d.y + 4
+ local cx = d.x + 4
+ local cy = d.y + 4
 
  if(test_map(cx + d.dx + d.r, cy)) d.dx *= -0.5
  if(test_map(cx + d.dx - d.r, cy)) d.dx *= -0.5
  if(test_map(cx, cy + d.dy + d.r)) d.dy *= -0.5
  if(test_map(cx, cy + d.dy - d.r)) d.dy *= -0.5
 
- if(collide(d, ship)) score += 1 del(actors, d)
+ if(pyth(d, ship) < 5) score += 1 del(actors, d)
 end
 
-function add_diamond(x,y)
- d=add_actor(x,y)
- d.dx=rnd() - 0.5
- d.dy=rnd() - 0.5
- d.sp=12
- d.update=update_diamond
+function add_diamond(x, y)
+ local d = add_actor(x, y)
+
+ d.dx = rnd() - 0.5
+ d.dy = rnd() - 0.5
+ d.sp = 12
+ d.update = update_diamond
+
  return d
 end
 
 function update_bomb(b)
+ local cx = b.x + 4
+ local cy = b.y + 4
+
  b.f = (b.f + 1) % 2
 
  b.l-=1
- cx = b.x + 4
- cy = b.y + 4
 
  if b.l < 0 or test_map(cx, cy) then
-  cel_x = flr(cx / 8)
-  cel_y = flr(cy / 8)
-  r = 2 + 1.5 * rnd()
-  nd = circle(cel_x, cel_y, r, 0)
-  nd += world_edges(cel_x - r, cel_y - r, cel_x + r + 1, cel_y + r + 1)
+  local cel_x = flr(cx / 8)
+  local cel_y = flr(cy / 8)
+  local r = 2 + 1.5 * rnd()
+  local n
+
+  n = circle(cel_x, cel_y, r, 0)
+  n += world_edges(cel_x - r, cel_y - r, cel_x + r + 1, cel_y + r + 1)
   explosion(cx, cy, 30) 
+  sfx(8)
+
   del(actors, b)
-  for i = 1, nd do
+
+  for i = 1, n do
    add_diamond(b.x, b.y)
   end
-  dx = b.x - ship.x
-  dy = b.y - ship.y
-  if sqrt(dx * dx + dy * dy) < 5 then
+
+  if pyth(b, ship) < 10 then
    alive = false
    dt = 100
   end
@@ -266,9 +300,11 @@ end
 
 function add_bomb(x, y)
  local b = add_actor(x, y)
+
  b.sp = 9
  b.l = 200
  b.update = update_bomb
+
  return b
 end
 
@@ -278,64 +314,65 @@ function update_ship(s)
 
  if alive then
   if btn(3) then
-   t = 0.07
+   local t = 0.07
+
    if btn(1) then 
     s.dx -= t * cos(s.angle + 0.25) 
     s.dy -= t * sin(s.angle + 0.25)
-    p = jet(s.x + 4, s.y + 4, 1 - s.angle + 0.5)
+
+    local p = jet(s.x + 4, s.y + 4, 1 - s.angle + 0.5)
     p.dy += s.dy
     p.dx += s.dx
    end
    if btn(0) then 
     s.dx += t * cos(s.angle + 0.25) 
     s.dy += t * sin(s.angle + 0.25)
-    p = jet(s.x + 4, s.y + 4, 1 - s.angle)
+
+    local p = jet(s.x + 4, s.y + 4, 1 - s.angle)
     p.dy += s.dy
     p.dx += s.dx
    end
   else
-   if(btn(1)) s.angle-=0.02
-   if(btn(0)) s.angle+=0.02
+   if(btn(1)) s.angle -= 0.02
+   if(btn(0)) s.angle += 0.02
   end
 
   if btn(2) then 
    s.dx += 0.1 * cos(s.angle) 
    s.dy += 0.1 * sin(s.angle)
-   p = jet(s.x + 4, s.y + 4, 1 - s.angle + 0.25)
+
+   local p = jet(s.x + 4, s.y + 4, 1 - s.angle + 0.25)
    p.dy += s.dy
    p.dx += s.dx
 
-   d = sqrt(s.dx * s.dx + s.dy * s.dy)
-   if d > 2 then
-    s.dx = 2 * s.dx / d
-    s.dy = 2 * s.dy / d
+   local a = sqrt(s.dx * s.dx + s.dy * s.dy)
+   if a > 2 then
+    s.dx = 2 * s.dx / a
+    s.dy = 2 * s.dy / a
    end
   end
 
   s.bt = max(0, s.bt - 1)
   if btn(4) and s.bt == 0 then 
-   b = add_bullet(s.x, s.y, s.angle)
+   local b = add_bullet(s.x, s.y, s.angle)
    b.dx += s.dx
    b.dy += s.dy
+
    s.bt = 10
   end
 
   s.bm = max(0, s.bm - 1)
   if btn(5) and s.bm == 0 then 
-   b = add_bomb(s.x, s.y)
+   local b = add_bomb(s.x, s.y)
    b.dx += s.dx
    b.dy += s.dy
+
    s.bm = 20
   end
  end
 
- s.dx=max(s.dx,-5) 
- s.dx=min(s.dx,5)
- s.dy=max(s.dy,-5) 
- s.dy=min(s.dy,5)
-
- cx = s.x + 4
- cy = s.y + 4
+ local cx = s.x + 4
+ local cy = s.y + 4
  if(test_map(cx + s.dx + s.r, cy)) s.dx *= -0.5
  if(test_map(cx + s.dx - s.r, cy)) s.dx *= -0.5
  if(test_map(cx, cy + s.dy + s.r)) s.dy *= -0.5
@@ -344,9 +381,9 @@ end
 
 function draw_ship(s)
  if alive then
-  cx = s.x + 4 - screen_x
-  cy = s.y + 4 - screen_y
-  sz = 2
+  local cx = s.x + 4 - screen_x
+  local cy = s.y + 4 - screen_y
+  local sz = 2
 
   x1 = cx + sz * cos(s.angle - 0.4)
   y1 = cy + sz * sin(s.angle - 0.4)
@@ -362,23 +399,25 @@ function draw_ship(s)
 end
 
 function add_ship(x, y)
- s=add_actor(x, y)
- s.angle=0
- s.bt=0
- s.bm=0
- s.update=update_ship
- s.draw=draw_ship
+ local s = add_actor(x, y)
+
+ s.angle = 0
+ s.bt = 0
+ s.bm = 0
+ s.update = update_ship
+ s.draw = draw_ship
+
  return s
 end
 
 function update_actor(a)
  a:update()
 
- a.dx+=a.ddx
- a.dy+=a.ddy
+ a.dx += a.ddx
+ a.dy += a.ddy
 
- a.x+=a.dx
- a.y+=a.dy		
+ a.x += a.dx
+ a.y += a.dy		
 end
 
 function _update()
@@ -386,8 +425,8 @@ function _update()
  foreach(particles,update_particle)
 
  if not alive then 
-  dt-=1
-  if(dt<0) alive=true score=0
+  dt -= 1
+  if(dt < 0) alive = true score = 0
  end
 
  screen_x = ship.x - 64 - ship.dx * 5
@@ -400,35 +439,36 @@ function draw_actor(a)
  if a.draw then
   a:draw()
  else
-  spr(a.sp+a.f,a.x - screen_x,a.y - screen_y)
+  spr(a.sp + a.f, a.x - screen_x, a.y - screen_y)
  end
 end
 
 function ctext(s, y)
  if(y) ty = y
- print(s,64-4*#s/2,ty)
- ty+=8
+ print(s, 64 - 4 * #s / 2, ty)
+ ty += 8
 end
 
 function draw_map()
- cel_x = flr(screen_x / 8)
- cel_y = flr(screen_y / 8)
- x = screen_x % 8
- y = screen_y % 8
+ local cel_x = flr(screen_x / 8)
+ local cel_y = flr(screen_y / 8)
+ local x = screen_x % 8
+ local y = screen_y % 8
+
  map(cel_x, cel_y, -x, -y, 17, 17)
 end
 
 function _draw()
  rectfill(0, 0, 127, 127, 0)
 
- foreach(stars,draw_star)
+ foreach(stars, draw_star)
  draw_map()
- foreach(particles,draw_particle)
- foreach(actors,draw_actor)
+ foreach(particles, draw_particle)
+ foreach(actors, draw_actor)
 
  color(15)
- print("score",100,2)
- print(score,100,8)
+ print("score", 100, 2)
+ print(score, 100, 8)
 
  if not alive then
   ctext("mega-roids", 40)
@@ -446,17 +486,14 @@ end
 generate_world()
 
 -- game state
-score=0
-nt=rnd()*10
-t=100
-it=0
-dt=100
-screen_x=0
-screen_y=0
+score = 0
+dt = 100
+screen_x = 0
+screen_y = 0
 
-ship=add_ship(64, 64)
+ship = add_ship(64, 64)
 add_stars()
-alive=false
+alive = false
 music(37)
 __gfx__
 0000000003333330033333300033330000333300000005500000800003333330003333000000dd8a0000dda80000000000000000000000000000000000000000
