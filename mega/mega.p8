@@ -2,6 +2,7 @@ pico-8 cartridge // http://www.pico-8.com
 version 8
 __lua__
 -- particle system
+particles={}
 
 function add_particle(x,y)
  p={}
@@ -18,14 +19,14 @@ function add_particle(x,y)
  return p
 end
 
-function explosion(x,y)
+function explosion(x,y,m)
  sfx(8)
  if(#particles>200) return
- for n=1,50+100*rnd() do
+ for n = 1, m + m * 2 * rnd() do
   p=add_particle(x,y)
   a=rnd()
-  p.dx=10*rnd()*sin(a)
-  p.dy=10*rnd()*cos(a)
+  p.dx = (2 + 0.2 * m) * rnd()*sin(a)
+  p.dy = (2 + 0.2 * m) * rnd()*cos(a)
   p.l=30*rnd()+10
   p.dc=1
   p.c=15*rnd()
@@ -45,32 +46,6 @@ function jet(x,y,a)
  return s
 end
 
-function splat(x,y)
- if(#particles>200) return
- for n=1,50+10*rnd() do
-  p=add_particle(x,y)
-  a=rnd()
-  p.dx=3*rnd()*sin(a)
-  p.dy=3*rnd()*cos(a)-4
-  p.ddy=0.1
-  p.l=30*rnd()+10
-  if(rnd()>0.5) then p.c=8 else p.c=4 end
-  p.s=2*rnd()
- end
-end
-
-function ink(x,y)
- for n=1,100+10*rnd() do
-  p=add_particle(x,y)
-  a=rnd()
-  p.dx=3*rnd()*sin(a)
-  p.dy=3*rnd()*cos(a)
-  p.ddy=0
-  p.l=5*rnd()+10
-  p.s=2
- end
-end
-
 function update_particle(p)
  p.dx+=-p.dx/10
  p.dy+=p.ddy-p.dy/10
@@ -87,7 +62,114 @@ function draw_particle(p)
  rectfill(x,y,x+p.s-1,y+p.s-1,p.c)
 end
 
+-- star field
+stars = {}
+
+function draw_star(s)
+ x = (s.x - screen_x / 2) % 128
+ y = (s.y - screen_y / 2) % 128
+ rectfill(x, y, x + 1, y + 1, 1)
+end
+
+function add_stars()
+ for i=1,20 do
+  s = {}
+  s.x = rnd() * 128
+  s.y = rnd() * 128
+  add(stars, s)
+ end
+end
+
+-- world building
+
+function circle(cx, cy, r, v)
+ nd = 0
+ for y=cy-r,cy+r do
+  for x=cx-r,cx+r do
+   dx = cx - x
+   dy = cy - y 
+   d = sqrt(dx*dx + dy*dy)
+   if d<r then
+    if(mget(x, y) == 16) nd += 1
+    mset(x, y, v)
+   end
+  end
+ end
+
+ return nd
+end
+
+function worm(x, y, d)
+ rad = 1
+ l = 10 + 60 * rnd()
+ for j=1,l do
+  circle(x, y, rad, 0)
+  d += (rnd() - 0.5) / 10
+  x += cos(d)
+  y += sin(d)
+  rad += rnd() - 0.5
+  rad = max(min(rad, 5), 1.5)
+ end
+end
+
+edges = {[0] = 30, 29, 28, 18, 27, 31, 19, 23, 26, 21, 32, 22, 20, 25, 24, 17}
+
+function world_edges(x1, y1, x2, y2)
+ local n_diamonds = 0
+
+ for y = y1, y2 do
+  for x = x1, x2 do
+   if mget(x, y) != 0 then
+    local bits = 0
+
+    if(mget(x + 1, y) != 0) bits += 1
+    if(mget(x, y + 1) != 0) bits += 2
+    if(mget(x - 1, y) != 0) bits += 4
+    if(mget(x, y - 1) != 0) bits += 8
+    if bits != 15 then
+     if(mget(x, y) == 16) n_diamonds += 1
+     mset(x, y, edges[bits])
+    end
+   end
+  end
+ end
+
+ return n_diamonds
+end
+
+function generate_world()
+ for y=0,63 do
+  for x=0,127 do
+   dx = 64 - x
+   dy = 32 - y
+   d = sqrt(dx*dx + 4 * dy*dy)
+
+   r = 0
+   if d<63 then
+    if rnd() < 0.01 then 
+     r = 16
+    else
+     r = 17
+    end
+   end
+
+   mset(x, y, r)
+  end
+ end
+
+ for i=1,20 do
+  a = rnd()
+  sx = 64 + 63 * cos(a)
+  sy = 32 + 32 * sin(a)
+  worm(sx, sy, a + 0.5)
+ end
+
+ world_edges(0, 0, 127, 63)
+end
+
 -- start actors
+
+actors={}
 
 function add_actor(x,y)
  a={}
@@ -99,31 +181,95 @@ function add_actor(x,y)
  a.ddy=0
  a.f=0
  a.sp=1
+ a.r=2.5
  add(actors,a)
  return a
 end
 
 function collide(a1,a2)
- return abs(a1.x-a2.x)<6 and abs(a1.y-a2.y)<6
+ d = a1.r + a2.r
+ return abs(a1.x - a2.x) < r and abs(a1.y - a2.y) < r
 end
 
-function update_eye(e)
- if(e.x<0 or e.x>120) e.dx*=-1
- if(e.y>=120) e.y=120 e.ddy=0 e.dy=0 e.dx=0
- if(e.y==120 and not e.splat) sfx(28) e.splat=true 
- e.l-=1
- if(e.l<0) del(actors,e)
+function test_map(x, y)
+ return(mget(flr(x/8), flr(y/8)) != 0)
 end
 
-function add_eye(x,y)
- e=add_actor(x,y)
- e.dx=2*rnd()-1
- e.dy=4*rnd()-10
- e.ddy=1
- e.sp=11
- e.l=50
- e.update=update_eye
- return e
+function update_bullet(b)
+ b.l-=1
+ if(b.l<0) del(actors,b)
+
+ cx = b.x + 4
+ cy = b.y + 4
+ if(test_map(cx, cy)) explosion(cx, cy, 5) del(actors, b)
+end
+
+function add_bullet(x,y,a)
+ b=add_actor(x,y)
+ b.dx=2*cos(a)
+ b.dy=2*sin(a)
+ b.x += b.dx
+ b.y += b.dy
+ b.sp=11
+ b.l=50
+ b.update=update_bullet
+ return b
+end
+
+function update_diamond(d)
+ cx = d.x + 4
+ cy = d.y + 4
+
+ if(test_map(cx + d.dx + d.r, cy)) d.dx *= -0.5
+ if(test_map(cx + d.dx - d.r, cy)) d.dx *= -0.5
+ if(test_map(cx, cy + d.dy + d.r)) d.dy *= -0.5
+ if(test_map(cx, cy + d.dy - d.r)) d.dy *= -0.5
+
+ if(collide(d, ship)) score += 1 del(actors, d)
+end
+
+function add_diamond(x,y)
+ d=add_actor(x,y)
+ d.dx=rnd() - 0.5
+ d.dy=rnd() - 0.5
+ d.sp=12
+ d.update=update_diamond
+ return d
+end
+
+function update_bomb(b)
+ b.f = (b.f + 1) % 2
+
+ b.l-=1
+ cx = b.x + 4
+ cy = b.y + 4
+
+ if b.l < 0 or test_map(cx, cy) then
+  cel_x = flr(cx / 8)
+  cel_y = flr(cy / 8)
+  r = 2 + 1.5 * rnd()
+  nd = circle(cel_x, cel_y, r, 0)
+  nd += world_edges(cel_x - r, cel_y - r, cel_x + r + 1, cel_y + r + 1)
+  explosion(cx, cy, 30) 
+  del(actors, b)
+  for i = 1, nd do
+   add_diamond(b.x, b.y)
+  end
+  dx = b.x - ship.x
+  dy = b.y - ship.y
+  if sqrt(dx * dx + dy * dy) < 5 then
+   alive = false
+   dt = 100
+  end
+ end
+end
+
+function add_bomb(x, y)
+ local b = add_actor(x, y)
+ b.sp = 9
+ b.l = 200
+ b.update = update_bomb
+ return b
 end
 
 function update_ship(s)
@@ -148,8 +294,8 @@ function update_ship(s)
     p.dx += s.dx
    end
   else
-    if(btn(1)) s.angle-=0.02
-    if(btn(0)) s.angle+=0.02
+   if(btn(1)) s.angle-=0.02
+   if(btn(0)) s.angle+=0.02
   end
 
   if btn(2) then 
@@ -161,9 +307,25 @@ function update_ship(s)
 
    d = sqrt(s.dx * s.dx + s.dy * s.dy)
    if d > 2 then
-     s.dx = 2 * s.dx / d
-     s.dy = 2 * s.dy / d
+    s.dx = 2 * s.dx / d
+    s.dy = 2 * s.dy / d
    end
+  end
+
+  s.bt = max(0, s.bt - 1)
+  if btn(4) and s.bt == 0 then 
+   b = add_bullet(s.x, s.y, s.angle)
+   b.dx += s.dx
+   b.dy += s.dy
+   s.bt = 10
+  end
+
+  s.bm = max(0, s.bm - 1)
+  if btn(5) and s.bm == 0 then 
+   b = add_bomb(s.x, s.y)
+   b.dx += s.dx
+   b.dy += s.dy
+   s.bm = 20
   end
  end
 
@@ -171,28 +333,39 @@ function update_ship(s)
  s.dx=min(s.dx,5)
  s.dy=max(s.dy,-5) 
  s.dy=min(s.dy,5)
+
+ cx = s.x + 4
+ cy = s.y + 4
+ if(test_map(cx + s.dx + s.r, cy)) s.dx *= -0.5
+ if(test_map(cx + s.dx - s.r, cy)) s.dx *= -0.5
+ if(test_map(cx, cy + s.dy + s.r)) s.dy *= -0.5
+ if(test_map(cx, cy + s.dy - s.r)) s.dy *= -0.5
 end
 
 function draw_ship(s)
- cx = s.x + 4 - screen_x
- cy = s.y + 4 - screen_y
- sz = 2
+ if alive then
+  cx = s.x + 4 - screen_x
+  cy = s.y + 4 - screen_y
+  sz = 2
 
- x1 = cx + sz * cos(s.angle - 0.4)
- y1 = cy + sz * sin(s.angle - 0.4)
- x2 = cx + sz * cos(s.angle)
- y2 = cy + sz * sin(s.angle)
- x3 = cx + sz * cos(s.angle + 0.4)
- y3 = cy + sz * sin(s.angle + 0.4)
-
- color(7)
- line(x1, y1, x2, y2)
- line(x2, y2, x3, y3)
+  x1 = cx + sz * cos(s.angle - 0.4)
+  y1 = cy + sz * sin(s.angle - 0.4)
+  x2 = cx + sz * cos(s.angle)
+  y2 = cy + sz * sin(s.angle)
+  x3 = cx + sz * cos(s.angle + 0.4)
+  y3 = cy + sz * sin(s.angle + 0.4)
+ 
+  color(7)
+  line(x1, y1, x2, y2)
+  line(x2, y2, x3, y3)
+ end
 end
 
 function add_ship(x, y)
  s=add_actor(x, y)
- a.angle=0
+ s.angle=0
+ s.bt=0
+ s.bm=0
  s.update=update_ship
  s.draw=draw_ship
  return s
@@ -202,7 +375,7 @@ function update_actor(a)
  a:update()
 
  a.dx+=a.ddx
- a.dy+=a.ddy		
+ a.dy+=a.ddy
 
  a.x+=a.dx
  a.y+=a.dy		
@@ -231,7 +404,8 @@ function draw_actor(a)
  end
 end
 
-function ctext(s)
+function ctext(s, y)
+ if(y) ty = y
  print(s,64-4*#s/2,ty)
  ty+=8
 end
@@ -246,158 +420,32 @@ end
 
 function _draw()
  rectfill(0, 0, 127, 127, 0)
- draw_map()
 
+ foreach(stars,draw_star)
+ draw_map()
  foreach(particles,draw_particle)
  foreach(actors,draw_actor)
 
  color(15)
- print("high score",10,2)
- print(high_score,10,8)
  print("score",100,2)
  print(score,100,8)
 
- print(ship.x,10,100)
- print(ship.y,10,110)
-
  if not alive then
-  ty=40
-  ctext("mega-roids")
+  ctext("mega-roids", 40)
   ctext("")
-  ctext("wrargle!!")
- end
-end
-
--- world building
-
-function circle(cx, cy, r, v)
- for y=cy-r,cy+r do
-  for x=cx-r,cx+r do
-   dx = cx - x
-   dy = cy - y 
-   d = sqrt(dx*dx + dy*dy)
-   if(d<r) mset(x, y, v)
-  end
- end
-end
-
-function worm(x, y, d)
- rad = 3
- l = 10 + 60 * rnd()
- for j=1,l do
-  circle(x, y, rad, 0)
-  d += (rnd() - 0.5) / 10
-  x += cos(d)
-  y += sin(d)
-  rad += rnd() - 0.5
-  rad = max(min(rad, 4), 1.5)
- end
-end
-
-templates = {
- { '   ', 
-   ' x ', 
-   '   ', 30 },
- { ' x ', 
-   ' x ', 
-   ' x ', 32 },
- { '   ', 
-   'xxx', 
-   '   ', 31 },
- { '   ', 
-   'xx ', 
-   '   ', 27 },
- { ' x ', 
-   ' x ', 
-   '   ', 26 },
- { '   ', 
-   ' xx', 
-   '   ', 29 },
- { '   ', 
-   ' x ', 
-   ' x ', 28 },
- { 'xxx', 
-   'xxx', 
-   '   ', 25 },
- { 'xx ', 
-   'xx ', 
-   'xx ', 24 },
- { '   ', 
-   'xxx', 
-   'xxx', 23 },
- { ' xx', 
-   ' xx', 
-   ' xx', 22 },
- { 'xx ', 
-   'xx ', 
-   '   ', 20 },
- { ' xx', 
-   ' xx', 
-   '   ', 21 },
- { '   ', 
-   'xx ', 
-   'xx ', 19 },
- { '   ', 
-   ' xx', 
-   ' xx', 18 }
-}
-
-function gen_templates()
- temp = {}
- for i=1,#templates do
-  r = 0
-  if(sub(templates[i][2],3,3) == 'x') r += 1
-  if(sub(templates[i][3],2,2) == 'x') r += 2
-  if(sub(templates[i][2],1,1) == 'x') r += 4
-  if(sub(templates[i][1],2,2) == 'x') r += 8
-  temp[r] = templates[i][4]
- end
-end
-
-function generate_world()
- for y=0,63 do
-  for x=0,127 do
-   dx = 64 - x
-   dy = 32 - y
-   d = sqrt(dx*dx + 4 * dy*dy)
-   if d<63 then
-    mset(x, y, 17)
-   else
-    mset(x, y, 0)
-   end
-  end
- end
-
- for i=1,10 do
-  a = rnd()
-  sx = 64 + 63 * cos(a)
-  sy = 32 + 32 * sin(a)
-  worm(sx, sy, a + 0.5)
- end
-
- gen_templates()
- for y=0,63 do
-  for x=0,127 do
-   if mget(x, y) != 0 then
-    sq = 0
-    if(mget(x + 1, y) != 0) sq += 1
-    if(mget(x, y + 1) != 0) sq += 2
-    if(mget(x - 1, y) != 0) sq += 4
-    if(mget(x, y - 1) != 0) sq += 8
-    if(temp[sq]) mset(x, y, temp[sq])
-   end
-  end
+  ctext("left/right rotate ship")
+  ctext("up to thrust")
+  ctext("down to strafe")
+  ctext("c to fire")
+  ctext("x to release bomb")
  end
 end
 
 -- start init
 
-actors={}
-particles={}
 generate_world()
 
 -- game state
-high_score=0
 score=0
 nt=rnd()*10
 t=100
@@ -407,25 +455,26 @@ screen_x=0
 screen_y=0
 
 ship=add_ship(64, 64)
+add_stars()
 alive=false
--- music(37)
+music(37)
 __gfx__
 0000000003333330033333300033330000333300000005500000800003333330003333000000dd8a0000dda80000000000000000000000000000000000000000
-000000003333333333333773033333300773333000000550000008083773377303333330000d00a8000d008a0000000000000000000000000000000000000000
-00000000377337733333317337733773317333330000aaa900033880371331733713317300555500005555000000000000000000000000000000000000000000
-000000003173317337733333317331733333377300005aa900333888333333333773377305765550057655500000000000000000000000000000000000000000
-0000000003333330017333300333333003333170000aaa9003333380033333303333333355655555556555550000000000000000000000000000000000000000
-00000000003333000033330000333300003333000aa5a90033333300003333000033330055555555555555550000000000000000000000000000000000000000
-0000000003000030030003000030003000300030a5a9900033333000003003000030030005555550055555500001700000000000000000000000000000000000
-00000000300003000030003000300030000300030990000088333330033003300030030000555500005555000007700000000000000000000000000000000000
-00000000444444440000000006600000444444600644444406444444000000004444446044444444064444600660000000000000066600000000000000000000
-00000000424444440006666664600000444446000644444400644144666600064444246044444414644244606446660000666000644466660066660066000006
-00000000444444440064444444466600444426000644424400644444444460064444446044444444064444604444446006444600641444440614446044666664
-00000000444441440064444442444600444444600644444406444444444446644444446044244444064444604144446006424460644444440644446044442444
-00000000444444440644414444444460414444600644444406444444414444444444446044444444064441604444246006444460064444420644246041444444
-00000000444444440644444444441460466444600644144400624444444444444414460044446664064444604444446064444460064444440664466044444464
-00000000444244440642444444444460600666000064446600644444444442444444460066660006006666006666660064404460006666660066660066444606
-00000000444444440644444444444460000000000006660006444444444444444444446000000000000000000000000006444460000000000000000000666000
+000000003333333333333773033333300773333000000550000008083773377303333330000d00a8000d008a0000000000766700000000000000000000000000
+00000000377337733333317337733773317333330000aaa900033880371331733713317300555500005555000000000007667660000000000000000000000000
+000000003173317337733333317331733333377300005aa900333888333333333773377305765550057655500007700006676650000000000000000000000000
+0000000003333330017333300333333003333170000aaa9003333380033333303333333355655555556555550007700000766500000000000000000000000000
+00000000003333000033330000333300003333000aa5a90033333300003333000033330055555555555555550000000000065000000000000000000000000000
+0000000003000030030003000030003000300030a5a9900033333000003003000030030005555550055555500000000000000000000000000000000000000000
+00000000300003000030003000300030000300030990000088333330033003300030030000555500005555000000000000000000000000000000000000000000
+44444444444444440000000006600000444444600644444406444444000000004444446044444444064444600660000000000000066600000000000000000000
+44766744424444440006666664600000444446000644444400644144666600064444246044444414644244606446660000666000644466660066660066000006
+47667664444444440064444444466600444426000644424400644444444460064444446044444444064444604444446006444600641444440614446044666664
+46676654444441440064444442444600444444600644444406444444444446644444446044244444064444604144446006424460644444440644446044442444
+44766544444444440644414444444460414444600644444406444444414444444444446044444444064441604444246006444460064444420644246041444444
+41465444444444440644444444441460466444600644144400624444444444444414460044446664064444604444446064444460064444440664466044444464
+44444424444244440642444444444460600666000064446600644444444442444444460066660006006666006666660064404460006666660066660066444606
+44444444444444440644444444444460000000000006660006444444444444444444446000000000000000000000000006444460000000000000000000666000
 06444460000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 06444460000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 06414460000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
