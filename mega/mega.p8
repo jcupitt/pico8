@@ -767,7 +767,7 @@ function _draw()
   ctext("down to strafe")
   ctext("z to fire")
   ctext("x to release bomb")
-  ctext("tab for map")
+  ctext("hold left shift for map")
  end
 end
 
