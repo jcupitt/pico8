@@ -484,7 +484,7 @@ function add_ship(x, y)
  local s = add_actor(x, y)
 
  s.r = 2
- s.angle = 0
+ s.angle = 0.25
  s.bt = 0
  s.bm = 0
  s.update = update_ship
@@ -731,19 +731,27 @@ function draw_map()
 end
 
 function draw_scanner()
+ local bx = (ship.x / 8) - 64
+ local by = (ship.y / 8) - 64
+
  for x = 0, 127 do
-  for y = 0, 64 do
-   local v = mget(x, y)
+  for y = 0, 127 do
+   local v = mget(bx + x, by + y)
    local c
 
    c = 0
-   if(v != 0) c = 4
+   if(rocky(v)) c = 4
+   if(monster(v)) c = 8
    if(v == 13) c = 10
 
-   pset(x, y + 16, c)
+   pset(x, y, c)
   end
  end
- pset(ship.x / 8, ship.y / 8, 7)
+ for i = 1, #actors do
+  pset((actors[i].x / 8) - bx, (actors[i].y / 8) - by, 8)
+ end
+ pset(64, 64, 7)
+ rect(56, 56, 72, 72, 7)
 end
 
 function _draw()
@@ -776,17 +784,18 @@ end
 generate_world()
 
 -- game state
+
 score = 0
 dead_timer = 200
-screen_x = 4
-screen_y = 4
+add_stars()
+ship = add_ship(512, 768)
+alive = false
+screen_x = ship.x + 4 - 64
+screen_y = ship.y + 4 - 64
 screen_dx = 0
 screen_dy = 0
 monster_timer = 100
 
-ship = add_ship(64, 64)
-add_stars()
-alive = false
 music(37)
 __gfx__
 0000000003333330033333300333333003333330033333300000800003333330003333000007000070000070000000000000000004a44a400000000000000000
