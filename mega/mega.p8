@@ -20,7 +20,7 @@ function add_particle(x, y)
  p.l = 30		-- life
  p.dc = 0		-- colour delta
  p.c = 0
- p.s = 1		-- size
+ p.s = 0		-- size ... 0 is one pixel across
 
  add(particles, p)
 
@@ -41,22 +41,22 @@ function explosion(x, y, m)
   p.l = 40 * rnd() + 5
   p.dc = 1
   p.c = 15 * rnd()
-  p.s = 3 * rnd()
+  p.s = rnd()
  end
 end
 
-function jet(x, y, a)
- local s = add_particle(x, y)
+function jet(s, a)
+ local j = add_particle(s.x + 4, s.y + 4)
 
  a += (rnd() - 0.5) * 0.1
- s.dx = sin(a)
- s.dy = cos(a)
- s.l = 10 * rnd() + 10
- s.dc = 1
- s.c = 15 * rnd()
- s.s = 1
+ j.dx = sin(a) + s.dx
+ j.dy = cos(a) + s.dy
+ j.l = 15 * rnd() + 5
+ j.dc = 0.2
+ j.c = 15 * rnd()
+ j.s = 0
 
- return s
+ return j
 end
 
 function update_particle(p)
@@ -74,7 +74,7 @@ function draw_particle(p)
  local x = p.x - screen_x
  local y = p.y - screen_y
 
- rectfill(x, y, x + p.s - 1, y + p.s - 1, p.c)
+ rectfill(x, y, x + p.s, y + p.s, p.c)
 end
 
 -- star field
@@ -139,8 +139,6 @@ function worm(x, y, d)
  mset(x, y, 13)
 end
 
-edges = {[0] = 30, 29, 28, 18, 27, 31, 19, 23, 26, 21, 32, 22, 20, 25, 24, 17}
-
 -- test sprite for "rockyness"
 function rocky(s)
  return fget(s, 0)
@@ -163,7 +161,62 @@ function get_bits(x, y)
  return b
 end
 
-function world_edges(x1, y1, x2, y2)
+-- {bits, {{prob, value}, {prob, value}, ...}},
+
+--[[ bits are laid out as
+
+      8
+    4 x 1
+      2
+
+ so values are
+
+ 0     isolated block
+ 1     finger pointing left
+ 2     finger pointing up
+ 3     corner pointing up and right
+ 4     finger pointing right
+ 5     horizontal line
+ 6     corner pointing up and right
+ 7     top edge
+ 8     finger pointing down
+ 9     corner pointing down and left
+ 10    vertical line
+ 11    left edge
+ 12    corner pointing down and right
+ 13    bottom edge
+ 14    right edge
+ 15    centre block
+
+]]
+
+object_probs = {
+ [7]  = {{0.05, 5}, {0.05, 38}, {0.05, 33}},
+ [11] = {{0.05, 7}, {0.05, 8}, {0.05, 48}},
+ [13] = {{0.05, 49}, {0.05, 51}, {0.05, 53}},
+ [14] = {{0.05, 50}, {0.05, 52}, {0.05, 54}}
+}
+
+edge_probs = {
+ [0] = {{1, 30}},
+       {{0.2, 6}, {1, 29}},
+       {{0.2, 44}, {1, 28}},
+       {{0.2, 15}, {1, 18}},
+       {{0.2, 27}, {1, 45}},
+       {{1, 31}},
+       {{1, 19}},
+       {{1, 23}},
+       {{1, 26}},
+       {{0.2, 47}, {1, 21}},
+       {{1, 32}},
+       {{0.4, 43}, {1, 22}},
+       {{0.4, 42}, {1, 20}},
+       {{1, 25}},
+       {{0.2, 46}, {1, 24}},
+       {{0.05, 14}, {0.05, 16}, {1, 17}}
+}
+
+function fix_tiles(tiles, x1, y1, x2, y2, decorate)
  local n = 0
 
  for y = y1, y2 do
@@ -172,36 +225,30 @@ function world_edges(x1, y1, x2, y2)
 
    if rocky(v) then
     local b = get_bits(x, y)
+    local p = tiles[b]
 
-    if b != 15 then
+    if p then
+     -- count number of diamonds we destroy
      if(v == 16) n += 1
-     mset(x, y, edges[b])
+
+     if decorate then
+      for i = 1, #p do
+       if rnd() < p[i][1] then
+        v = p[i][2]
+        break
+       end
+      end
+     else
+      v = p[#p][2]
+     end
+
+     mset(x, y, v)
     end
    end
   end
  end
 
  return n
-end
-
-function world_objects()
- for y = 0, 63 do
-  for x = 0, 127 do
-   if rocky(mget(x, y)) then
-    local b = get_bits(x, y)
-
-    if b > 0 and b < 15 and rnd() < 0.05 then
-     mset(x, y, 5)
-    elseif b > 0 and b < 15 and rnd() < 0.05 then
-     mset(x, y, 33)
-    elseif b > 0 and b < 15 and rnd() < 0.05 then
-     mset(x, y, 38)
-    elseif b == 15 and rnd() < 0.05 then
-     mset(x, y, 16)
-    end
-   end
-  end
- end
 end
 
 function generate_world()
@@ -226,15 +273,120 @@ function generate_world()
   worm(sx, sy, a + 0.5)
  end
 
- world_objects()
-
- world_edges(0, 0, 127, 63)
+ fix_tiles(object_probs, 0, 0, 127, 63, true)
+ fix_tiles(edge_probs, 0, 0, 127, 63, true)
 end
 
 -- start actors
 
 actors = {}
-monsters = {}
+
+-- the actor map 
+
+-- have 32 across, so 1024 / 32 == 32 pixels 
+-- square for each actor map cell
+
+actor_map = {}
+actor_map_extras = {}
+actor_map_width = 32
+actor_map_height = 16
+
+function build_actor_map()
+ for y = 1, actor_map_height do
+  actor_map[y - 1] = {}
+  for x = 1, actor_map_width do
+   actor_map[y - 1][x - 1] = {}
+  end
+ end
+end
+
+function update_actor_map(a)
+ local x = flr(actor_map_width * a.x / 1024)
+ local y = flr(actor_map_height * a.y / 512)
+
+ if x >= 0 and x < actor_map_width and
+  y >= 0 and y < actor_map_height then
+  m = actor_map[y][x]
+ else
+  m = actor_map_extras
+ end
+
+ if a.actor_map != m then
+  del(a.actor_map, a)
+  add(m, a)
+  a.actor_map = m
+ end
+end
+
+function nearby_actors(a, r)
+ -- do the divide first or we'll overflow
+ local x = flr(actor_map_width * (a.x / 1024))
+ local y = flr(actor_map_height * (a.y / 512))
+
+ local searched_extras
+ local processed 
+
+ searched_extras = false
+ processed = {}
+
+ for i = -r, r do
+  for j = -r, r do
+   local ix = x + i
+   local iy = y + j
+   local m
+
+   if ix >= 0 and ix < actor_map_width and 
+    iy >= 0 and iy < actor_map_height then
+    m = actor_map[iy][ix]
+   elseif not searched_extras then
+    m = actor_map_extras
+    searched_extras = true
+   else
+    m = nil
+   end
+
+   if m then 
+    foreach(m, function (x)
+     add(processed, x)
+    end)
+   end
+  end
+ end
+
+ return processed
+end
+
+function foreach_nearby_actors(a, r, f)
+ -- do the divide first or we'll overflow
+ local x = flr(actor_map_width * (a.x / 1024))
+ local y = flr(actor_map_height * (a.y / 512))
+
+ local searched_extras
+
+ searched_extras = false
+
+ for i = -r, r do
+  for j = -r, r do
+   local ix = x + i
+   local iy = y + j
+   local m
+
+   if ix >= 0 and ix < actor_map_width and 
+    iy >= 0 and iy < actor_map_height then
+    m = actor_map[iy][ix]
+   elseif not searched_extras then
+    m = actor_map_extras
+    searched_extras = true
+   else
+    m = nil
+   end
+
+   if m then 
+    foreach(m, f)
+   end
+  end
+ end
+end
 
 function add_actor(x, y)
  local a = {}
@@ -249,25 +401,60 @@ function add_actor(x, y)
  a.f = 0	-- frame of animation
  a.r = 3	-- radius
 
+ -- set false when removed from actor table and being removed from system
+ a.alive = true	
+
+ -- the actor map cell we are on
+ a.actor_map = nil
+
  add(actors, a)
+ update_actor_map(a)
 
  return a
 end
 
-function pyth(a, b)
+function remove_actor(a)
+ if a.alive then 
+  if(a.remove) a:remove()
+  if(a.actor_map) del(a.actor_map, a) a.actor_map = nil
+  del(actors, a)
+  a.alive = false
+ end
+end
+
+function update_actor(a)
+ if(a.alive) a:update()
+
+ -- may be been killed during the update, check again
+ if a.alive then
+  a.dx += a.ddx
+  a.dy += a.ddy
+
+  a.x += a.dx
+  a.y += a.dy		
+
+  -- update_actor_map(a)
+ end
+end
+
+function closer(a, b, d)
  -- numbers in pico8 are 16.16 bit fixed point, so we can't square 
  -- anything bigger than sqrt(32767), about 170
 
- -- scale down by 1000, square and square-root, scale back up
+ -- scale down by 1000 before squaring 
  -- this will give us enough range for this game
  local dx = (a.x - b.x) / 1000
  local dy = (a.y - b.y) / 1000
 
- return 1000 * sqrt(dx * dx + dy * dy)
+ -- we want (1000 * sqrt(dx * dx + dy * dy) < d)
+ -- divide by 1000 and square both sides to remove the sqrt
+ d /= 1000
+
+ return dx * dx + dy * dy < d * d
 end
 
 function collision(a, b)
- return pyth(a, b) < a.r + b.r
+ return closer(a, b, a.r + b.r)
 end
 
 -- limit actor's max speed
@@ -298,20 +485,22 @@ end
 
 function update_bullet(b)
  b.l -= 1
- if(b.l < 0) del(actors, b)
+ if b.l < 0 then
+  remove_actor(b)
+ end
 
  if hit_wall(b, b.dx, b.dy) then
   explosion(b.x + 4, b.y + 4, 5) 
-  del(actors, b)
+  remove_actor(b)
  end
 
- for m in all(monsters) do
-  if collision(b, m) then
+ foreach_nearby_actors(b, 1, function(a)
+  if a.monster and collision(b, a) then
    explosion(b.x + 4, b.y + 4, 10) 
-   del(actors, b)
-   kill_monster(m)
+   remove_actor(b)
+   remove_actor(a)
   end
- end
+ end)
 end
 
 function add_bullet(x, y, a)
@@ -335,7 +524,7 @@ function update_diamond(d)
   if(hit_wall(d, 0, d.dy)) d.dy *= -0.5
  end
 
- if(pyth(d, ship) < 5) score += 1 del(actors, d)
+ if(closer(d, ship, 5)) score += 1 remove_actor(d)
 end
 
 function add_diamond(x, y)
@@ -350,7 +539,7 @@ function add_diamond(x, y)
 end
 
 function kill_ship()
- alive = false
+ -- alive = false
  dead_timer = 200
  explosion(ship.x + 4, ship.y + 4, 200)
  sfx(8)
@@ -370,7 +559,7 @@ function update_bomb(b)
   local n
 
   n = circle(cel_x, cel_y, r, 0)
-  n += world_edges(cel_x - r, cel_y - r, cel_x + r + 1, cel_y + r + 1)
+  n += fix_tiles(edge_probs, cel_x - r, cel_y - r, cel_x + r + 1, cel_y + r + 1, false)
   explosion(cx, cy, 30) 
   sfx(8)
 
@@ -378,11 +567,11 @@ function update_bomb(b)
    add_diamond(b.x, b.y)
   end
 
-  if alive and pyth(b, ship) < 10 then
+  if alive and closer(b, ship, 10) then
    kill_ship() 
   end
 
-  del(actors, b)
+  remove_actor(b)
  end
 end
 
@@ -407,18 +596,12 @@ function update_ship(s)
    if btn(1) then 
     s.dx -= t * cos(s.angle + 0.25) 
     s.dy -= t * sin(s.angle + 0.25)
-
-    local p = jet(s.x + 4, s.y + 4, 1 - s.angle + 0.5)
-    p.dy += s.dy
-    p.dx += s.dx
+    jet(s, 1 - s.angle + 0.5)
    end
    if btn(0) then 
     s.dx += t * cos(s.angle + 0.25) 
     s.dy += t * sin(s.angle + 0.25)
-
-    local p = jet(s.x + 4, s.y + 4, 1 - s.angle)
-    p.dy += s.dy
-    p.dx += s.dx
+    jet(s, 1 - s.angle)
    end
   else
    if(btn(1)) s.angle -= 1 / 64
@@ -428,10 +611,7 @@ function update_ship(s)
   if btn(2) then 
    s.dx += 0.01 * cos(s.angle) 
    s.dy += 0.01 * sin(s.angle)
-
-   local p = jet(s.x + 4, s.y + 4, 1 - s.angle + 0.25)
-   p.dy += s.dy
-   p.dx += s.dx
+   jet(s, 1 - s.angle + 0.25)
   end
 
   max_speed(s, 1)
@@ -456,8 +636,8 @@ function update_ship(s)
  end
 
  if hit_wall(s, s.dx, s.dy) then
-  if(hit_wall(s, s.dx, 0)) s.dx *= -0.5
-  if(hit_wall(s, 0, s.dy)) s.dy *= -0.5
+  if(hit_wall(s, s.dx, 0)) s.dx *= -0.1
+  if(hit_wall(s, 0, s.dy)) s.dy *= -0.1
  end
 end
 
@@ -493,16 +673,43 @@ function add_ship(x, y)
  return s
 end
 
+-- monsters
+
+function update_monster(m)
+ m:sub_update()
+
+ if hit_wall(m, m.dx, m.dy) then
+  if(hit_wall(m, m.dx, 0)) m.dx *= -0.5
+  if(hit_wall(m, 0, m.dy)) m.dy *= -0.5
+ end
+
+ if alive and closer(m, ship, 4) then
+  remove_actor(m)
+  kill_ship()
+ end
+end
+
+function add_monster(x, y)
+ local m = add_actor(x, y)
+
+ m.r = 3
+ m.monster = true
+ m.update = update_monster
+
+ return m
+end
+
 function update_octo(m)
  m.f = (m.f + 0.2) % 4
 
  m.dx += (ship.x - m.x) * 0.0002
  m.dy += (ship.y - m.y) * 0.0002
- max_speed(m, 10)
+ max_speed(m, 1.05)
 end
 
 function add_octo(x, y)
- local o = add_actor(x, y)
+ local o = add_monster(x, y)
+
  o.sub_update = update_octo
  o.sp = 1
 
@@ -510,7 +717,8 @@ function add_octo(x, y)
 end
 
 function add_bat(x, y)
- local b = add_actor(x, y)
+ local b = add_monster(x, y)
+
  b.sub_update = update_octo
  b.sp = 34
 
@@ -520,9 +728,15 @@ end
 function update_centi(m)
  m.f = (m.f + 0.1) % 2
 
- m.dx += (ship.x - m.x) * 0.0002
- m.dy += (ship.y - m.y) * 0.0002
- max_speed(m, 10)
+ local dx = ship.x - m.x
+ local dy = ship.y - m.y
+ local a = atan2(dx, dy)
+
+ if(m.angle < a) m.angle += 0.001
+ if(m.angle > a) m.angle -= 0.001
+
+ m.dx = 0.5 * cos(m.angle)
+ m.dy = 0.5 * sin(m.angle)
 end
 
 function update_segment(s)
@@ -555,36 +769,35 @@ function update_segment(s)
   end
  else
   s.l = max(0, s.l - 1)
-  if(s.l == 0) kill_monster(s) explosion(s.x + 4, s.y + 4, 10) 
+  if(s.l == 0) remove_actor(s) explosion(s.x + 4, s.y + 4, 10) 
  end
 end
 
 function add_segment(h)
- local s = add_actor(h.x, h.y)
+ local s = add_monster(h.x, h.y)
 
  s.following = h
- s.alive = true
 
  s.queue = {}
- s.buf_len = 10
+ s.buf_len = 15
  for i = 1, s.buf_len do s.queue[i - 1] = {} end
  s.read = 0
  s.write = 0
 
- s.update = update_monster
  s.sub_update = update_segment
  s.sp = 41 
- add(monsters, s)
 
  return s
 end
 
 function add_centi(x, y)
- local m = add_actor(x, y)
+ local m = add_monster(x, y)
+
  local s, x
 
  m.sub_update = update_centi
  m.sp = 39 
+ m.angle = 0 
 
  x = m
  for i = 1, 15 do
@@ -608,51 +821,25 @@ function add_centi(x, y)
  return m
 end
 
-function update_monster(m)
- m:sub_update()
-
- if hit_wall(m, m.dx, m.dy) then
-  if(hit_wall(m, m.dx, 0)) m.dx *= -0.5
-  if(hit_wall(m, 0, m.dy)) m.dy *= -0.5
- end
-
- if alive and pyth(m, ship) < 4 then
-  kill_monster(m)
-  kill_ship()
- end
-end
-
 monster_table = {
  [5] = add_octo,
+ [7] = add_octo,
+ [8] = add_centi,
  [33] = add_bat,
  [38] = add_centi,
+ [48] = add_bat,
+ [49] = add_octo,
+ [50] = add_octo,
+ [51] = add_bat,
+ [52] = add_bat,
+ [53] = add_centi,
+ [54] = add_centi,
 }
 
-function add_monster(x, y, v)
+function spawn_monster(x, y, v)
  local m = monster_table[v](x, y)
 
- m.r = 3
- m.alive = true
- m.update = update_monster
- add(monsters, m)
-
  return m
-end
-
-function kill_monster(m)
- m.alive = false
- del(actors, m)
- del(monsters, m)
-end
-
-function update_actor(a)
- a:update()
-
- a.dx += a.ddx
- a.dy += a.ddy
-
- a.x += a.dx
- a.y += a.dy		
 end
 
 function update_screen()
@@ -676,8 +863,15 @@ function update_screen()
 end
 
 function _update60()
- foreach(actors, update_actor)
- foreach(particles,update_particle)
+ local nearby
+
+ nearby = nearby_actors(ship, 5)
+ foreach(nearby, update_actor)
+ foreach(nearby, function (a)
+  if(a.alive) update_actor_map(a)
+ end)
+
+ foreach(particles, update_particle)
  update_screen()
 
  if not alive then 
@@ -698,7 +892,7 @@ function _update60()
 
     if monster(v) and rnd() < 0.5 then
      mset(x, y, 0)
-     local m = add_monster(x * 8, y * 8, v)
+     local m = spawn_monster(x * 8, y * 8, v)
     end
    end
   end
@@ -752,6 +946,7 @@ function draw_scanner()
  end
  pset(64, 64, 7)
  rect(56, 56, 72, 72, 7)
+ print("#acts " .. #actors, 1, 110)
 end
 
 function _draw()
@@ -760,8 +955,10 @@ function _draw()
  foreach(stars, draw_star)
  draw_map()
  foreach(particles, draw_particle)
- foreach(actors, draw_actor)
- if(btn(4, 1)) draw_scanner()
+
+ foreach_nearby_actors(ship, 3, draw_actor)
+
+ if(btn(4, 1)) draw_scanner() 
 
  color(15)
  print("score", 100, 2)
@@ -777,17 +974,20 @@ function _draw()
   ctext("x to release bomb")
   ctext("hold left shift for map")
  end
+
+ print("cpu " .. flr((stat(1) * 100)) .. "%", 1, 120)
 end
 
 -- start init
 
 generate_world()
+build_actor_map()
+add_stars()
 
 -- game state
 
 score = 0
 dead_timer = 200
-add_stars()
 ship = add_ship(512, 768)
 alive = false
 screen_x = ship.x + 4 - 64
@@ -798,38 +998,38 @@ monster_timer = 100
 
 music(37)
 __gfx__
-0000000003333330033333300333333003333330033333300000800003333330003333000007000070000070000000000000000004a44a400000000000000000
-0000000033333333333337733333333337733333333333330000080837733773033333300997990007999700000000000076670004a44a400000000000000000
-0000000037733773333331733773377331733333311331130003388037133173371331730988890009888900000800000766766044a44a440000000000000000
-00000000317331733773333331733173333337733333333300333888333333333773377377878770098789000009a80006676650aaaaaaaa0000000000000000
-0000000003333330017333300333333003333170033333300333338003333330333333330988890009888900008a900000766500444994440000000000000000
-00000000003333000033330000333300003333000033330033333300003333000033330009979900079997000000800000065000444994440000000000000000
-00000000030000300300030000300030003000300300003033333000003003000030030000070000700000700000000000000000444444440000000000000000
-00000000300003000030003000300030000300030030030088333330033003300030030000000000000000000000000000000000444444440000000000000000
-44444444444444440000000006600000444444600644444406444444000000004444446044444444064444600660000000000000066600000000000000000000
-44766744424444440006666664600000444446000644444400644144666600064444246044444414644244606446660000666000644466660066660066000006
-47667664444444440064444444466600444426000644424400644444444460064444446044444444064444604444446006444600641444440614446044666664
-46676654444441440064444442444600444444600644444406444444444446644444446044244444064444604144446006424460644444440644446044442444
-44766544444444440644414444444460414444600644444406444444414444444444446044444444064441604444246006444460064444420644246041444444
-41465444444444440644444444441460466444600644144400624444444444444414460044446664064444604444446064444460064444440664466044444464
-44444424444244440642444444444460600666000064446600644444444442444444460066660006006666006666660064404460006666660066660066444606
-44444444444444440644444444444460000000000006660006444444444444444444446000000000000000000000000006444460000000000000000000666000
-06444460090009000900090009000900009000900090009002000020220000220020020000222200000000000000000000000000000000000000000000000000
-06444460099099000990990009909900009909900099099000200200002002000200002002ddd220000000000000000000000000000000000000000000000000
-0641446099999990977977909999999a09779779a99999990dd2222002222220022222202d222222000000000000000000000000000000000000000000000000
-6444460091191190971917909779779a09719179a9779779d222222227722772222222222d222252000000000000000000000000000000000000000000000000
-64444600099999000999999a0719179aa9999990a97191702112211527122175277227752d222252000000000000000000000000000000000000000000000000
-06444600aa999aa0aa9999aaaa9999aaaa9999aaaa9999aa22222225222222252712217522222252000000000000000000000000000000000000000000000000
-06424460aa999aa0aa999aaaaa999aa0aaa999aa0aa999aa22222225222222252222222502255520000000000000000000000000000000000000000000000000
-06444460a99999a0a09990a0a09990000a09990a0009990a02222250022222500222225000222200000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0000000003333330033333300333333003333330033333300660000003330000000255500007000070000070000000000000000004a44a4044444444000cc000
+0000000033333333333337733333333337733333333333336446006633133030202212250997990007999700000000000076670004a44a404244044400cccc66
+0000000037733773333331733773377331733333311331136488664433133303022212220988890009888900000800000766766044a44a44440004440cc99cc4
+00000000317331733773333331733173333337733333333368888444333333000022222277878770098789000009a80006676650aaaaaaaa400541440cc99cc4
+00000000033333300173333003333330033331700333333088aa884233333300002222220988890009888900008a900000766500444994444605444406cccc44
+00000000003333000033330000333300003333000033330088aa88443313330302d21222099799000799970000008000000650004449944444444444064cc444
+000000000300003003000300003000300030003003000030088886663313303020d2122200070000700000700000000000000000444444444442444406424444
+0000000030000300003000300030003000030003003003000088000003330000000d222000000000000000000000000000000000444444444444444406444444
+44444444444444440000000006600000444444600644444406444444000000004444446044444444064444600333000000000000066600000000000000000000
+447667444244444400066666646000004444460006444444006441446666000644442460444444146442446063b3360000666000644466660066660066000006
+47667664444444440064444444466600444426000644424400644444444460064444446044444444064444604333346006444600641444440614446044666664
+466766544444414400644444424446004444446006444444064444444444466444444460442444440644446041b3346006424460644444440644446044442444
+447665444444444406444144444444604144446006444444064444444144444444444460444444440644416044442dd006444460064444420644246041444444
+41465444444444440644444444441460466444600644144400624444444444444414460044446664064444604444d88d64444460064444440664466044444464
+44444424444244440642444444444460600666000064446600644444444442444444460066660006006666006666d88d64404460006666660066660066444606
+444444444444444406444444444444600000000000066600064444444444444444444460000000000000000000000dd006444460000000000000000000666000
+0644446009000900090009000900090000900090009000900200002022000022002002000022220044444460064444430ee00000066660004444446006444444
+06444460099099000990990009909900009909900099099000200200002002000200002002ddd2204444460000644133e99e60b0644446004448880006666444
+0641446099999990977977909999999a09999999a99999990dd2222002222220022222202d2222224334260000633334e99e4b00444444604488888006777644
+6444460091191190971917909779779a09999999a9779779d222222227722772222222222d2222524433bbb00633b3340ee4b460444244604887878867878764
+64444600099999000999999a0719179aa9779770a97191702112211527122175277227752d222252414b3bb006333334064b4460144444604888888867777764
+06444600aa999aa0aa9999aaaa9999aaaa71917aaa9999aa22222225222222252712217522222252466bb3bb0333334464444460444444604878878867877764
+06424460aa999aa0aa999aaaaa999aa0aaa999aa0aa999aa22222225222222252222222502255520600bbb3b03b33b4464404460666666004488888006778666
+06444460a99999a0a09990a0a09990000a09990a0009990a0222225002222250022222500022220000000bbb0333444406444460000000004448880000666600
+0000000000300300000033300a99999aaaa09900052222200222d000008888000088880000888800008888000000003003000000000000000000000000000000
+00990aaa03000030030331330aa999aa9aa919995222222222212d02088888800888888008888880077887700000030000300000000000000000000000000000
+99919aa900333300303331330aa999aa999919905222222222212d20877887788888888887788778871881780000300000030000000000000000000000000000
+09919999033333300033333300999990999999005112211222222200871881788778877887188178888888880bbb30000003bbb0000000000000000000000000
+00999999333333330033333309119119999919902222222d22222200888888888718817888888888888888880bb3b000000b3bb0000000000000000000000000
+099199993113311330333133099999999aa9199902222dd02221222000077000000770000007700000077000bb3bb000000bb3bb000000000000000000000000
+99919aa9333333330303313300990990aaa09900002002005221220200777700007777000007700000077000b3bbb000000bbb3b000000000000000000000000
+00990aaa03333330000033300090009000000000020000200555200000000000000000000077770000777700bbb0000000000bbb000000000000000000000000
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
@@ -927,7 +1127,7 @@ __gfx__
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 __gff__
-0002020202020202020000000000000001010101010101010101010101010101010202020202020202020000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0002020202020102020000000000010101010101010101010101010101010101010202020202020202020101010101010202020202020200000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 __map__
 1000100000000000000000171700000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
