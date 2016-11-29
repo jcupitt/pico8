@@ -753,20 +753,21 @@ function _draw()
  draw_map()
  foreach(particles, draw_particle)
  foreach(actors, draw_actor)
- if(btn(13)) draw_scanner()
+ if(btn(4, 1)) draw_scanner()
 
  color(15)
  print("score", 100, 2)
  print(score, 100, 8)
 
  if not alive then
-  ctext("mega-roids", 40)
+  ctext("mega-roids", 20)
   ctext("")
   ctext("left/right rotate ship")
   ctext("up to thrust")
   ctext("down to strafe")
   ctext("z to fire")
   ctext("x to release bomb")
+  ctext("tab for map")
  end
 end
 
