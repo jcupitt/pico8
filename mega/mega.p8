@@ -529,16 +529,24 @@ function update_segment(s)
  local f = s.following
 
  if f then
-  add(s.queue, {f.x, f.y, f.dx, f.dy})
-  if #s.queue > 10 then
-   local p = s.queue[1]
+  local r = s.queue[s.write]
+
+  r[1] = f.x
+  r[2] = f.y
+  r[3] = f.dx
+  r[4] = f.dy
+  s.write = (s.write + 1) % s.buf_len
+
+  -- if we've wrapped all the way around, start to read out
+  if s.write == s.read then
+   local p = s.queue[s.read]
 
    s.x = p[1]
    s.y = p[2]
    s.dx = p[3]
    s.dy = p[4]
 
-   del(s.queue, p)
+   s.read = (s.read + 1) % s.buf_len
   end
 
   if not f.alive then
@@ -556,7 +564,13 @@ function add_segment(h)
 
  s.following = h
  s.alive = true
+
  s.queue = {}
+ s.buf_len = 10
+ for i = 1, s.buf_len do s.queue[i - 1] = {} end
+ s.read = 0
+ s.write = 0
+
  s.update = update_monster
  s.sub_update = update_segment
  s.sp = 41 
@@ -576,6 +590,19 @@ function add_centi(x, y)
  for i = 1, 15 do
   s = add_segment(x)
   x = s
+ end
+
+ -- we need to have the segments in order tail first so the head is 
+ -- drawn on top ... del the segments to a temp table, then add back, 
+ -- reversing the order
+ local parts = {}
+ while x do
+  add(parts, x)
+  del(actors, x)
+  x = x.following
+ end
+ for i = 1, #parts do
+  add(actors, parts[i])
  end
 
  return m
@@ -726,20 +753,21 @@ function _draw()
  draw_map()
  foreach(particles, draw_particle)
  foreach(actors, draw_actor)
- if(btn(4) and btn(5)) draw_scanner()
+ if(btn(4, 1)) draw_scanner()
 
  color(15)
  print("score", 100, 2)
  print(score, 100, 8)
 
  if not alive then
-  ctext("mega-roids", 40)
+  ctext("mega-roids", 20)
   ctext("")
   ctext("left/right rotate ship")
   ctext("up to thrust")
   ctext("down to strafe")
   ctext("z to fire")
   ctext("x to release bomb")
+  ctext("tab for map")
  end
 end
 
