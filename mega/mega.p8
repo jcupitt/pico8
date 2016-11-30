@@ -742,11 +742,87 @@ function add_monster(x, y)
  return m
 end
 
+function monster_transition(m)
+ m.timer = max(0, m.timer - 1)
+ if m.timer == 0 then
+  local actions = m.transition[m.state]
+
+  for i = 1, #actions do
+   if rnd() < actions[i][1] then
+    m.timer = rnd() * actions[i][2]
+    m.state = actions[i][3]
+    m.dx = 0
+    m.dy = 0
+    break
+   end
+  end
+ end
+end
+
+-- look for wall directions, same order as for bits
+-- right, down, left, up
+roost_x = { 1, 0, -1,  0}
+roost_y = { 0, 1,  0, -1}
+
+function monster_try_roost(m)
+ local cx = flr(m.x / 8)
+ local cy = flr(m.y / 8)
+
+ if mget(cx, cy) == 0 then
+  for i = 1, #m.roost do
+   if rocky(mget(cx + roost_x[i], cy + roost_y[i])) then
+    mset(cx, cy, m.roost[i])
+    remove_actor(m)
+   end
+  end
+ end
+end
+
+function accellerate_to(m, x, y, s)
+ m.ddx = (x - m.x) * s
+ m.ddy = (y - m.y) * s
+end
+
+-- s1 = speed of turn, s2 = speed of movement
+function circle_to(m, x, y, s1, s2)
+ local dx = x - m.x
+ local dy = y - m.y
+ local a = atan2(dx, dy)
+
+ if(m.angle < a) m.angle += s1
+ if(m.angle > a) m.angle -= s1
+
+ m.dx = s2 * cos(m.angle)
+ m.dy = s2 * sin(m.angle)
+end
+
+-- follow monster f, with a queue of buf_len positions
+function follow_to(s, f)
+ local r = s.queue[s.write]
+
+ r[1] = f.x
+ r[2] = f.y
+ r[3] = f.dx
+ r[4] = f.dy
+ s.write = (s.write + 1) % s.buf_len
+
+ -- if we've wrapped all the way around, start to read out
+ if s.write == s.read then
+  local p = s.queue[s.read]
+
+  s.x = p[1]
+  s.y = p[2]
+  s.dx = p[3]
+  s.dy = p[4]
+
+  s.read = (s.read + 1) % s.buf_len
+ end
+end
+
 function update_octo(m)
  m.f = (m.f + 0.2) % 4
 
- m.dx += (ship.x - m.x) * 0.0002
- m.dy += (ship.y - m.y) * 0.0002
+ accellerate_to(m, ship.x, ship.y, 0.0002)
  max_speed(m, 1.05)
 end
 
@@ -759,52 +835,52 @@ function add_octo(x, y)
  return o
 end
 
+function update_bat(b)
+ b.f = (b.f + 0.2) % 4
+
+ monster_transition(b)
+
+ if b.state == 1 then
+  -- attack
+  accellerate_to(b, ship.x, ship.y, 0.0002)
+ elseif b.state == 2 then
+  -- hover
+  b.ddx = 0.1 * (rnd() - 0.5)
+  b.ddy = 0.1 * (rnd() - 0.5)
+ else 
+  -- sleepy
+  accellerate_to(b, 512, 256, 0.0002)
+  monster_try_roost(b)
+ end
+
+ max_speed(b, 1.05)
+end
+
 function add_bat(x, y)
  local b = add_monster(x, y)
 
- b.sub_update = update_octo
+ b.sub_update = update_bat
+
+ --[state] = {{probability, timer, new state}}
+ b.transition = {
+  [1] = {{1, 200, 2}},			-- attack
+  [2] = {{0.5, 500, 1}, {1, 200, 3}},	-- hover
+  [3] = {{1, 500, 1}},			-- sleepy
+ }
+
+ b.roost = {48, 33, 52, 51}
  b.sp = 34
+ b.state = 1
+ b.timer = 500
 
  return b
-end
-
-function update_centi(m)
- m.f = (m.f + 0.1) % 2
-
- local dx = ship.x - m.x
- local dy = ship.y - m.y
- local a = atan2(dx, dy)
-
- if(m.angle < a) m.angle += 0.001
- if(m.angle > a) m.angle -= 0.001
-
- m.dx = 0.5 * cos(m.angle)
- m.dy = 0.5 * sin(m.angle)
 end
 
 function update_segment(s)
  local f = s.following
 
  if f then
-  local r = s.queue[s.write]
-
-  r[1] = f.x
-  r[2] = f.y
-  r[3] = f.dx
-  r[4] = f.dy
-  s.write = (s.write + 1) % s.buf_len
-
-  -- if we've wrapped all the way around, start to read out
-  if s.write == s.read then
-   local p = s.queue[s.read]
-
-   s.x = p[1]
-   s.y = p[2]
-   s.dx = p[3]
-   s.dy = p[4]
-
-   s.read = (s.read + 1) % s.buf_len
-  end
+  follow_to(s, f)
 
   if not f.alive then
    s.following = nil
@@ -833,6 +909,23 @@ function add_segment(h)
  return s
 end
 
+function update_centi(m)
+ m.f = (m.f + 0.1) % 2
+
+ monster_transition(m)
+
+ if m.state == 1 then
+  -- attack
+  circle_to(m, ship.x, ship.y, 0.001, 0.5)
+ else 
+  -- sleepy
+  accellerate_to(m, 512, 256, 0.0002)
+  monster_try_roost(m)
+ end
+
+ max_speed(m, 1.05)
+end
+
 function add_centi(x, y)
  local m = add_monster(x, y)
 
@@ -842,23 +935,19 @@ function add_centi(x, y)
  m.sp = 39 
  m.angle = 0 
 
+ --[state] = {{probability, timer, new state}}
+ m.transition = {
+  [1] = {{1, 500, 3}},			-- attack
+  [3] = {{1, 100, 1}},			-- sleepy
+ }
+ m.state = 1
+ m.timer = 500
+ m.roost = {8, 38, 54, 53}
+
  x = m
  for i = 1, 15 do
   s = add_segment(x)
   x = s
- end
-
- -- we need to have the segments in order tail first so the head is 
- -- drawn on top ... del the segments to a temp table, then add back, 
- -- reversing the order
- local parts = {}
- while x do
-  add(parts, x)
-  del(actors, x)
-  x = x.following
- end
- for i = 1, #parts do
-  add(actors, parts[i])
  end
 
  return m
@@ -870,6 +959,15 @@ function add_mush(x, y)
  m.sub_update = update_centi
  m.sp = 55
  m.angle = 0 
+
+ --[state] = {{probability, timer, new state}}
+ m.transition = {
+  [1] = {{1, 200, 3}},			-- attack
+  [3] = {{1, 500, 1}},			-- sleepy
+ }
+ m.state = 1
+ m.timer = 500
+ m.roost = {64, 64, 64, 64}
 
  return m
 end
