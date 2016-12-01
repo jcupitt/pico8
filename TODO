@@ -1,0 +1,30 @@
+- switch to anti-clockwise screenspace convention for all angles to match 
+  pico8's sin()/cos() 
+
+- mushrooms walk around edges and wake other monsters
+
+  mushrooms are very light sleepers
+
+- move bomb to e or whatever, have z as strafe, allow up/down/left/right
+  strafing
+
+- need a monster that shoots at you
+
+- put all per-monster data (roost, update etc) into a static per-monster table, 
+  link to that from the actor
+
+  cf. class / instance
+
+- ship shield
+
+- powerups in treasure chests
+
+- monsters drop power pills on death
+
+- show score, bombs, diamonds etc on scanner screen only?
+
+- better start screen, more instructions
+
+- exit portal
+
+- scoring?
