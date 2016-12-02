@@ -650,23 +650,32 @@ function update_ship(s)
  s.ddy = -0.01 * s.dy
 
  if alive then
-  local t, a
 
-  t = 0
   if btn(4) then
    -- strafe mode
+   local t, a
+
+   t = 0
+   s.dx = 0
+   s.dy = 0
    if btn(0) then 
-    t = 0.02
+    t = 0.5
     a = s.angle + 0.25
    elseif btn(1) then
-    t = 0.02
+    t = 0.5
     a = s.angle - 0.25
    elseif btn(2) then
-    t = 0.02
+    t = 0.5
     a = s.angle
    elseif btn(3) then
-    t = 0.02
+    t = 0.5
     a = s.angle + 0.5
+   end
+
+   if t > 0 then
+    s.dx = t * cos(a) 
+    s.dy = t * sin(a)
+    jet(s, 1 - a + 0.25)
    end
   else
    -- rotate mode
@@ -674,15 +683,11 @@ function update_ship(s)
    if(btn(0)) s.angle += 1 / 64
 
    if btn(2) then 
+    s.dx += 0.03 * cos(s.angle) 
+    s.dy += 0.03 * sin(s.angle)
+    jet(s, 1 - s.angle + 0.25)
     t = 0.03
-    a = s.angle
    end
-  end
-
-  if t > 0 then
-   s.dx += t * cos(a) 
-   s.dy += t * sin(a)
-   jet(s, 1 - a + 0.25)
   end
 
   max_speed(s, 1)
@@ -690,8 +695,11 @@ function update_ship(s)
   s.bt = max(0, s.bt - 1)
   if btn(5) and s.bt == 0 then 
    local b = add_bullet(s.x, s.y, s.angle)
-   b.dx += s.dx
-   b.dy += s.dy
+   if not btn(4) then
+    -- strafe mode bullets are absolute
+    b.dx += s.dx
+    b.dy += s.dy
+   end
    s.bt = 20
   end
 
