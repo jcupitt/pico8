@@ -65,15 +65,15 @@ function spiral_explosion(x, y)
 end
 
 function jet(s, a)
- s.jt = (s.jt + 1) % 4
+ s.jt = (s.jt + 1) % 3
  if(s.jt != 0) return
 
  local j = add_particle(s.x + 4, s.y + 4)
 
- a += (rnd() - 0.5) * 0.1
+ a += (rnd() - 0.5) * 0.15
  j.dx = sin(a) + s.dx
  j.dy = cos(a) + s.dy
- j.l = 15 * rnd() + 10
+ j.l = 15 * rnd() + 15
  j.dc = 0.5
  j.c = 15 * rnd()
  j.s = 0
@@ -174,69 +174,69 @@ function growth(s)
  return fget(s, 2)
 end
 
+--[[ bits are laid out as
+
+      2
+    4 x 1
+      8
+
+ so values are
+
+ 0     isolated block
+ 1     finger pointing left
+ 2     finger pointing down
+ 3     corner pointing down and left
+ 4     finger pointing right
+ 5     horizontal line
+ 6     corner pointing down and right
+ 7     bottom edge
+ 8     finger pointing up
+ 9     corner pointing up and left
+ 10    vertical line
+ 11    left edge
+ 12    corner pointing up and right
+ 13    top edge
+ 14    right edge
+ 15    centre block
+
+]]
+
 function get_bits(x, y)
  local b
 
  b = 0
  if(rocky(mget(x + 1, y))) b += 1
- if(rocky(mget(x, y + 1))) b += 2
+ if(rocky(mget(x, y - 1))) b += 2
  if(rocky(mget(x - 1, y))) b += 4
- if(rocky(mget(x, y - 1))) b += 8
+ if(rocky(mget(x, y + 1))) b += 8
 
  return b
 end
 
 -- {bits, {{prob, value}, {prob, value}, ...}},
 
---[[ bits are laid out as
-
-      8
-    4 x 1
-      2
-
- so values are
-
- 0     isolated block
- 1     finger pointing left
- 2     finger pointing up
- 3     corner pointing up and right
- 4     finger pointing right
- 5     horizontal line
- 6     corner pointing up and right
- 7     top edge
- 8     finger pointing down
- 9     corner pointing down and left
- 10    vertical line
- 11    left edge
- 12    corner pointing down and right
- 13    bottom edge
- 14    right edge
- 15    centre block
-
-]]
-
 object_probs = {
- [7]  = {{0.05, 5}, {0.05, 38}, {0.05, 33}, {0.05, 64}},
- [11] = {{0.05, 7}, {0.05, 8}, {0.05, 48}, {0.05, 64}},
- [13] = {{0.05, 49}, {0.05, 51}, {0.05, 53}, {0.05, 64}},
+ [7]  = {{0.05, 49}, {0.05, 51}, {0.05, 53}, {0.05, 64}},
+ [11] = {{0.05,  7}, {0.05,  8}, {0.05, 48}, {0.05, 64}},
+ [13] = {{0.05,  5}, {0.05, 38}, {0.05, 33}, {0.05, 64}},
  [14] = {{0.05, 50}, {0.05, 52}, {0.05, 54}, {0.05, 64}}
 }
 
 edge_probs = {
  [0] = {{1, 30}},
        {{0.2, 6}, {1, 29}},
-       {{0.2, 44}, {1, 28}},
-       {{0.2, 15}, {1, 18}},
-       {{0.2, 27}, {1, 45}},
-       {{1, 31}},
-       {{1, 19}},
-       {{1, 23}},
        {{1, 26}},
        {{0.2, 47}, {1, 21}},
-       {{1, 32}},
-       {{0.4, 43}, {1, 22}},
+       {{0.2, 27}, {1, 45}},
+       {{1, 31}},
        {{0.4, 42}, {1, 20}},
        {{1, 25}},
+       {{0.2, 44}, {1, 28}},
+       {{0.2, 15}, {1, 18}},
+       {{1, 32}},
+       {{0.4, 43}, {1, 22}},
+       {{1, 19}},
+       {{1, 23}},
        {{0.2, 46}, {1, 24}},
        {{0.05, 14}, {0.05, 16}, {1, 17}}
 }
@@ -516,7 +516,7 @@ function collision(a, b)
  return closer(a, b, a.r + b.r)
 end
 
--- limit actor's max speed
+-- limit actor's max speed ... scale the unit vector
 function max_speed(a, s)
  local l = sqrt(a.dx * a.dx + a.dy * a.dy)
  if l > s then
@@ -611,16 +611,16 @@ function update_bomb(b)
  b.l-=1
 
  if b.l < 0 or hit_wall(b, b.dx, b.dy) then
-  local cx = b.x + b.dx + 4
-  local cy = b.y + b.dy + 4
-  local cel_x = flr(cx / 8)
-  local cel_y = flr(cy / 8)
+  local nx = b.x + b.dx + 4
+  local ny = b.y + b.dy + 4
+  local cx = flr(nx / 8)
+  local cy = flr(ny / 8)
   local r = 2 + 1.5 * rnd()
   local n
 
-  n = circle(cel_x, cel_y, r, 0)
-  n += fix_tiles(edge_probs, cel_x - r, cel_y - r, cel_x + r + 1, cel_y + r + 1, false)
-  spiral_explosion(cx, cy)
+  n = circle(cx, cy, r, 0)
+  n += fix_tiles(edge_probs, cx - r, cy - r, cx + r + 1, cy + r + 1, false)
+  spiral_explosion(nx, ny)
   sfx(8)
 
   for i = 1, n do
@@ -703,16 +703,16 @@ end
 
 function draw_ship(s)
  if alive then
-  local cx = s.x + 4 - screen_x
-  local cy = s.y + 4 - screen_y
+  local nx = s.x + 4 - screen_x
+  local ny = s.y + 4 - screen_y
   local sz = 2
 
-  x1 = cx + sz * cos(s.angle - 0.4)
-  y1 = cy + sz * sin(s.angle - 0.4)
-  x2 = cx + sz * cos(s.angle)
-  y2 = cy + sz * sin(s.angle)
-  x3 = cx + sz * cos(s.angle + 0.4)
-  y3 = cy + sz * sin(s.angle + 0.4)
+  x1 = nx + sz * cos(s.angle - 0.4)
+  y1 = ny + sz * sin(s.angle - 0.4)
+  x2 = nx + sz * cos(s.angle)
+  y2 = ny + sz * sin(s.angle)
+  x3 = nx + sz * cos(s.angle + 0.4)
+  y3 = ny + sz * sin(s.angle + 0.4)
  
   color(7)
   line(x1, y1, x2, y2)
@@ -757,7 +757,6 @@ function add_monster(x, y)
  m.monster = true
  m.sleeping = false
  m.update = update_monster
- m.hover_timer = 0
  m.angle = 0
  m.state = 1
  m.timer = 500
@@ -782,10 +781,10 @@ function monster_transition(m)
  end
 end
 
--- look for wall directions, same order as for bits
--- right, down, left, up
-roost_x = { 1, 0, -1,  0}
-roost_y = { 0, 1,  0, -1}
+-- look for wall directions, same order as for bits and sin()/cos()
+-- right, up, left, down
+roost_x = { 1,  0, -1,  0}
+roost_y = { 0, -1,  0,  1}
 
 function monster_try_roost(m)
  local cx = flr(m.x / 8)
@@ -823,19 +822,20 @@ function circle_to(m, x, y, s1, s2)
  m.dy = s2 * sin(m.angle)
 end
 
--- follow monster f, with a queue of buf_len positions
--- return true if the buffer is empty (and therefore f is dead)
+-- follow monster f, lagging by .delay positions
+-- return false if the buffer is empty (and therefore f 
+-- died a while ago)
 function follow_to(s, f)
  -- init
  if not s.queue then
   s.queue = {}
-  s.buf_len = 15
-  for i = 1, s.buf_len do s.queue[i - 1] = {} end
+  s.delay = 15
+  for i = 1, s.delay do s.queue[i - 1] = {} end
   s.read = 0
   s.write = 0
  end
 
- local full = (s.write + 1) % s.buf_len == s.read
+ local full = (s.write + 1) % s.delay == s.read
  local empty = s.write == s.read
 
  if f.alive then
@@ -845,7 +845,7 @@ function follow_to(s, f)
   r[2] = f.y
   r[3] = f.dx
   r[4] = f.dy
-  s.write = (s.write + 1) % s.buf_len
+  s.write = (s.write + 1) % s.delay
  end
 
  -- if f is alive and the buffer is full, read out
@@ -858,13 +858,18 @@ function follow_to(s, f)
   s.dx = p[3]
   s.dy = p[4]
 
-  s.read = (s.read + 1) % s.buf_len
+  s.read = (s.read + 1) % s.delay
  end
 
- return s.read == s.write
+ return not (s.read == s.write)
 end
 
 function hover(m)
+ -- init
+ if not m.hover_timer then
+  m.hover_timer = 0
+ end
+
  m.hover_timer = max(0, m.hover_timer - 1)
  if m.hover_timer == 0 then
   m.hover_timer = 60 * rnd() 
@@ -901,7 +906,7 @@ function add_octo(x, y)
   [2] = {{0.5, 500, 1}, {1, 200, 3}},	-- hover
   [3] = {{1, 500, 2}},			-- sleepy
  }
- o.roost = {7, 5, 50, 49}
+ o.roost = {7, 49, 50, 5}
  o.sp = 1
 
  return o
@@ -934,7 +939,7 @@ function add_bat(x, y)
   [2] = {{0.5, 500, 1}, {1, 200, 3}},	-- hover
   [3] = {{1, 500, 1}},			-- sleepy
  }
- b.roost = {48, 33, 52, 51}
+ b.roost = {48, 51, 52, 33}
  b.sp = 34
 
  return b
@@ -944,7 +949,7 @@ function update_segment(s)
  local f = s.following
 
  if f then
-  if follow_to(s, f) then
+  if not follow_to(s, f) then
    if f.sleeping then
     s.sleeping = true
     remove_actor(s)
@@ -1000,7 +1005,7 @@ function add_centi(x, y)
   [1] = {{1, 500, 3}},			-- attack
   [3] = {{1, 100, 1}},			-- sleepy
  }
- m.roost = {8, 38, 54, 53}
+ m.roost = {8, 53, 54, 38}
 
  x = m
  for i = 1, 15 do
@@ -1092,7 +1097,7 @@ function shake_monster(x, y, p)
   if m.roost then
    for i = 1, #m.roost do
     if m.roost[i] == v then 
-     m.angle = 0.5 - ((i - 1) / #m.roost)
+     m.angle = ((i - 1) / #m.roost) + 0.5
      m.dx = 0.5 * cos(m.angle)
      m.dy = 0.5 * sin(m.angle)
     end
@@ -1189,12 +1194,12 @@ function ctext(s, y)
 end
 
 function draw_map()
- local cel_x = flr(screen_x / 8)
- local cel_y = flr(screen_y / 8)
+ local cx = flr(screen_x / 8)
+ local cy = flr(screen_y / 8)
  local x = screen_x % 8
  local y = screen_y % 8
 
- map(cel_x, cel_y, -x, -y, 17, 17)
+ map(cx, cy, -x, -y, 17, 17)
 end
 
 function draw_scanner()
@@ -1221,9 +1226,10 @@ function draw_scanner()
  rect(56, 56, 72, 72, 7)
 
  color(15)
+ print("#nearby " .. #nearby_actors(ship, 5), 1, 100)
  print("#acts " .. #actors, 1, 110)
- print("score", 100, 2)
- print(score, 100, 8)
+ print("score", 64, 110)
+ print(score, 64, 120)
 end
 
 function _draw()
@@ -1251,6 +1257,7 @@ function _draw()
   ctext("hold left shift for map")
  end
 
+ color(5)
  print("cpu " .. flr((stat(1) * 100)) .. "%", 1, 120)
 end
 
