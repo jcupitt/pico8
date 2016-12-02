@@ -3,15 +3,42 @@
   mushrooms are very light sleepers
 
 - need a monster that shoots at you
+  
+  started blue crab
 
-- put all per-monster data (roost, update etc) into a static per-monster table, 
-  link to that from the actor
+- monsters are hovering on wake, only go to attack if you are nearby
+
+- put all per-monster data (roost, update, world gen data etc) into a static 
+  per-monster table, link to that from the actor
 
   cf. class / instance
 
 - ship shield
 
 - powerups in treasure chests
+
+  	* faster reload
+
+	* see monsters on scanner
+
+	* higher top speed
+
+	* extra bombs
+
+	* scanner could just show explored areas ... set a flag in draw if we
+	  see a block
+
+	  we could then have a map powerup
+
+	* three-way bullets
+
+	* more shields
+
+	* faster shield recovery
+
+	* bonus diamonds
+
+	* booby trap (releases monsters)
 
 - monsters drop power pills on death
 
