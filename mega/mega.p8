@@ -571,7 +571,7 @@ function add_bullet(x, y, a)
  b.x += b.dx
  b.y += b.dy
  b.sp = 11
- b.l = 80
+ b.l = 100
  b.r = 2
  b.update = update_bullet
 
@@ -650,43 +650,53 @@ function update_ship(s)
  s.ddy = -0.01 * s.dy
 
  if alive then
-  if btn(3) then
-   local t = 0.03
+  local t, a
 
-   if btn(1) then 
-    s.dx -= t * cos(s.angle + 0.25) 
-    s.dy -= t * sin(s.angle + 0.25)
-    jet(s, 1 - s.angle + 0.5)
-   end
+  t = 0
+  if btn(4) then
+   -- strafe mode
    if btn(0) then 
-    s.dx += t * cos(s.angle + 0.25) 
-    s.dy += t * sin(s.angle + 0.25)
-    jet(s, 1 - s.angle)
+    t = 0.02
+    a = s.angle + 0.25
+   elseif btn(1) then
+    t = 0.02
+    a = s.angle - 0.25
+   elseif btn(2) then
+    t = 0.02
+    a = s.angle
+   elseif btn(3) then
+    t = 0.02
+    a = s.angle + 0.5
    end
   else
+   -- rotate mode
    if(btn(1)) s.angle -= 1 / 64
    if(btn(0)) s.angle += 1 / 64
+
+   if btn(2) then 
+    t = 0.03
+    a = s.angle
+   end
   end
 
-  if btn(2) then 
-   s.dx += 0.01 * cos(s.angle) 
-   s.dy += 0.01 * sin(s.angle)
-   jet(s, 1 - s.angle + 0.25)
+  if t > 0 then
+   s.dx += t * cos(a) 
+   s.dy += t * sin(a)
+   jet(s, 1 - a + 0.25)
   end
 
   max_speed(s, 1)
 
   s.bt = max(0, s.bt - 1)
-  if btn(4) and s.bt == 0 then 
+  if btn(5) and s.bt == 0 then 
    local b = add_bullet(s.x, s.y, s.angle)
    b.dx += s.dx
    b.dy += s.dy
-
    s.bt = 20
   end
 
   s.bm = max(0, s.bm - 1)
-  if btn(5) and s.bm == 0 then 
+  if btn(3, 1) and s.bm == 0 then 
    local b = add_bomb(s.x, s.y)
    b.dx += s.dx
    b.dy += s.dy
@@ -1118,20 +1128,25 @@ function wake_monsters(x, y)
 end
 
 function update_screen()
- local tx, ty
+ local tx, ty, damp
 
  tx = ship.x + 4
  ty = ship.y + 4
- if btn(3) then
+ damp = 0.2
+ if btn(4) then
+  -- displace in strafe mode
   tx += 48 * cos(ship.angle)
   ty += 48 * sin(ship.angle)
+
+  -- and damp less, since we're near the screen edge
+  damp = 0.4
  end
 
  screen_dx += (tx - 64 - screen_x) * 0.1
  screen_dy += (ty - 64 - screen_y) * 0.1
 
- screen_dx *= 0.2
- screen_dy *= 0.2
+ screen_dx *= damp
+ screen_dy *= damp
 
  screen_x += screen_dx
  screen_y += screen_dy
@@ -1226,10 +1241,12 @@ function draw_scanner()
  rect(56, 56, 72, 72, 7)
 
  color(15)
- print("#nearby " .. #nearby_actors(ship, 5), 1, 100)
- print("#acts " .. #actors, 1, 110)
- print("score", 64, 110)
- print(score, 64, 120)
+ print("score", 0, 110)
+ print(score, 0, 120)
+
+ color(5)
+ print("#nearby " .. #nearby_actors(ship, 5), 80, 100)
+ print("#acts " .. #actors, 80, 110)
 end
 
 function _draw()
@@ -1250,15 +1267,14 @@ function _draw()
   ctext("")
   ctext("left/right rotate ship")
   ctext("up to thrust")
-  ctext("down to strafe")
-  ctext("z to fire")
-  ctext("x to release bomb")
+  ctext("hold z for strafe")
+  ctext("x to fire")
+  ctext("d to release bomb")
   ctext("a to grow veg")
-  ctext("hold left shift for map")
  end
 
  color(5)
- print("cpu " .. flr((stat(1) * 100)) .. "%", 1, 120)
+ print("cpu " .. flr((stat(1) * 100)) .. "%", 80, 120)
 end
 
 -- start init
