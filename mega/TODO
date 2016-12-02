@@ -1,3 +1,8 @@
+- rename monster.state as .mood
+
+- render eyes in a separate pass, link to mood changes: angry, sleepy, normal
+  (hover?), psycho (no pupil)
+
 - mushrooms walk around edges and wake other monsters
 
   mushrooms are very light sleepers
