@@ -586,7 +586,7 @@ function update_bullet(b)
    if a.monster and collision(b, a) then
     explosion(b.x + 4, b.y + 4, 10) 
     remove_actor(b)
-    remove_actor(a)
+    hit_monster(a)
    end
   end
  end)
@@ -716,14 +716,14 @@ function update_ship(s)
    if(btn(0)) s.angle += 1 / 64
 
    if btn(2) then 
-    s.dx += 0.05 * cos(s.angle) 
-    s.dy += 0.05 * sin(s.angle)
+    s.dx += 0.04 * cos(s.angle) 
+    s.dy += 0.04 * sin(s.angle)
     jet(s, 1 - s.angle + 0.25)
     t = 0.03
    end
   end
 
-  max_speed(s, 2)
+  max_speed(s, 1)
 
   s.bt = max(0, s.bt - 1)
   if btn(5) and s.bt == 0 then 
@@ -758,7 +758,7 @@ function update_ship(s)
  end
 end
 
-shield_radius = {5, 9, 12, 15, 18}
+shield_radius = {5, 8, 11, 14, 17}
 
 function draw_ship(s)
  if alive then
@@ -983,7 +983,7 @@ octo = {
  update = {
   [1] = function (m) 
    hover(m)
-   if(closer(m, ship, 30)) m.mood = 2
+   if(closer(m, ship, 30)) set_mood(m, 100, 2)
   end,
   [2] = function (m) 
    accelerate_to(m, ship.x, ship.y, 0.0002) 
@@ -1007,25 +1007,32 @@ bat = {
  eye_y = 0,
 
  max_speed = 1.05,
+ health = 5,
 
  transition = {
   [1] = {{1, 200, 2}},			
   [2] = {{0.5, 500, 1}, {1, 200, 4}},
+  [3] = {{1, 500, 1}},
   [4] = {{1, 500, 1}},		
  },
 
  update = {
   [1] = function (m)
    hover(m)
-   if(closer(m, ship, 30)) m.mood = 2
+   if(closer(m, ship, 30)) set_mood(m, 100, 2)
   end,
   [2] = function (m) accelerate_to(m, ship.x, ship.y, 0.0002) end,
+  [3] = function (m) circle_to(m, 512, 256, 0.0002, 0.5) end,
   [4] = function (m) 
    accelerate_to(m, 512, 256, 0.0002) 
    max_speed(m, 0.4)
    try_roost(m) 
   end
- }
+ },
+
+ hit = function (m)
+  set_mood(m, 100, 3)
+ end
 }
 
 segment = {
@@ -1095,7 +1102,7 @@ centi = {
  update = {
   [1] = function (m) 
    circle_to(m, 512, 256, 0.002, 0.5)
-   if(closer(m, ship, 30)) m.mood = 2
+   if(closer(m, ship, 30)) set_mood(m, 100, 2)
   end,
   [2] = function (m) circle_to(m, ship.x, ship.y, 0.002, 0.5) end,
   [4] = function (m) 
@@ -1126,7 +1133,7 @@ mush = {
  update = {
   [1] = function (m) 
    hover(m)
-   if(closer(m, ship, 30)) m.mood = 2
+   if(closer(m, ship, 30)) set_mood(m, 100, 2)
   end,
   [2] = function (m) accelerate_to(m, ship.x, ship.y, 0.0002) end,
   [4] = function (m) 
@@ -1157,7 +1164,7 @@ crab = {
  update = {
   [1] = function (m) 
    hover(m) 
-   if(closer(m, ship, 30)) m.mood = 2
+   if(closer(m, ship, 30)) set_mood(m, 100, 2)
   end,
   [2] = function (m) accelerate_to(m, ship.x, ship.y, 0.0002) end,
   [4] = function (m) 
@@ -1186,7 +1193,7 @@ tree = {
  update = {
   [1] = function (m) 
    hover(m) 
-   if(closer(m, ship, 30)) m.mood = 2
+   if(closer(m, ship, 30)) set_mood(m, 100, 2)
   end,
   [2] = function (m) 
    accelerate_to(m, ship.x, ship.y, 0.0002) 
@@ -1243,6 +1250,15 @@ monster_table = {
  crab,
 }
 
+function set_mood(m, t, i)
+ if m.mood != i then
+  m.timer = rnd() * t
+  m.mood = i
+  m.dx = 0
+  m.dy = 0
+ end
+end
+
 function monster_transition(m)
  m.timer = max(0, m.timer - 1)
  if m.timer == 0 then
@@ -1250,10 +1266,7 @@ function monster_transition(m)
 
   for i = 1, #actions do
    if rnd() < actions[i][1] then
-    m.timer = rnd() * actions[i][2]
-    m.mood = actions[i][3]
-    m.dx = 0
-    m.dy = 0
+    set_mood(m, actions[i][2], actions[i][3])
     break
    end
   end
@@ -1273,6 +1286,8 @@ function add_monster(x, y, mt)
  m.mt = mt
  m.r = 3
  if(mt.radius) m.r = mt.radius
+ m.health = 1
+ if(mt.health) m.health = mt.health
  m.monster = true
  m.sleeping = false
  m.angle = 0
@@ -1297,7 +1312,7 @@ function add_monster(x, y, mt)
   end
 
   if alive and closer(m, ship, 4) then
-   remove_actor(m)
+   hit_monster(m)
    kill_ship()
   end
  end
@@ -1329,6 +1344,15 @@ function add_monster(x, y, mt)
  if(mt.add) mt.add(m)
 
  return m
+end
+
+function hit_monster(m)
+ if(m.mt.hit) m.mt.hit(m)
+
+ m.health = max(0, m.health - 1)
+ if m.health == 0 then
+  remove_actor(m)
+ end
 end
 
 -- shake monster at cell x, y ... p is probability of waking it
@@ -1413,7 +1437,11 @@ function _update60()
 
  if not alive then 
   dead_timer = max(0, dead_timer - 1)
-  if(dead_timer == 0) alive = true score = 0
+  if dead_timer == 0 then 
+   ship.shields = 3
+   alive = true 
+   score = 0
+  end
  end
 
  monster_timer = max(0, monster_timer - 1)
@@ -1539,6 +1567,14 @@ build_actor_map()
 add_stars()
 
 -- game state
+
+explored = {}
+for y = 0, 63 do
+ explored[y] = {}
+ for x = 0, 127 do
+  explored[y][x] = false
+ end
+end
 
 score = 0
 dead_timer = 200
