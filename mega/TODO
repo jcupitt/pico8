@@ -1,17 +1,10 @@
-- mushrooms walk around edges and wake other monsters
+- crabs walk around edges and wake other monsters
 
-  mushrooms are very light sleepers
+  crabs are very light sleepers
 
-- need a monster that shoots at you
+- monsters take a few hits to die, become scared after the first hit
   
 - monster spawner cell
-
-- monsters are hovering on wake, only go to attack if you are nearby
-
-- put all per-monster data (roost, update, world gen data etc) into a static 
-  per-monster table, link to that from the actor
-
-  cf. class / instance
 
 - ship shield
 
@@ -40,7 +33,7 @@
 
 	* booby trap (releases monsters)
 
-- monsters drop power pills on death
+- monsters drop power pills on death, power pills become bombs
 
 - better start screen, more instructions
 
