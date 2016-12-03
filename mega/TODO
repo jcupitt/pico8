@@ -14,10 +14,7 @@
 
 	* extra bombs
 
-	* scanner could just show explored areas ... set a flag in draw if we
-	  see a block
-
-	  we could then have a map powerup
+	* see whole map on scanner
 
 	* three-way bullets
 

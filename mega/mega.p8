@@ -1398,6 +1398,32 @@ function wake_monsters(x, y)
  end
 end
 
+function reset_explored()
+ explored = {}
+ for y = 0, 63 do
+   explored[y] = {}
+  for x = 0, 127 do
+   explored[y][x] = false
+  end
+ end
+end
+
+function mark_explored(x, y)
+ local cx = flr(x / 8)
+ local cy = flr(y / 8)
+
+ local left = max(0, cx)
+ local right = min(127, cx + 15)
+ local top = max(0, cy)
+ local bottom = min(63, cy + 15)
+
+ for y = top, bottom do
+  for x = left, right do
+   explored[y][x] = true
+  end
+ end
+end
+
 function update_screen()
  local tx, ty, damp
 
@@ -1421,6 +1447,8 @@ function update_screen()
 
  screen_x += screen_dx
  screen_y += screen_dy
+
+ mark_explored(screen_x, screen_y) 
 end
 
 function _update60()
@@ -1498,8 +1526,17 @@ function draw_scanner()
 
  for x = 0, 127 do
   for y = 0, 127 do
-   local v = mget(bx + x, by + y)
+   local nx = flr(bx + x)
+   local ny = flr(by + y)
+
+   local v
    local c
+
+   v = 0
+   if nx >= 0 and nx < 128 and 
+    ny >= 0 and ny < 64 then
+    if(explored[ny][nx]) v = mget(nx, ny)
+   end
 
    c = 0
    if(rocky(v)) c = 4
@@ -1568,14 +1605,7 @@ add_stars()
 
 -- game state
 
-explored = {}
-for y = 0, 63 do
- explored[y] = {}
- for x = 0, 127 do
-  explored[y][x] = false
- end
-end
-
+reset_explored()
 score = 0
 dead_timer = 200
 ship = add_ship(512, 768)
