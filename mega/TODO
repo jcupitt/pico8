@@ -1,0 +1,31 @@
+- power pills should just be regular actors, not monsters ... cf. bullets
+
+- crabs walk around edges and wake other monsters
+
+  crabs are very light sleepers
+
+- monster spawner cell
+
+- powerups in treasure chests
+
+	* bouncing bullets
+
+	* see monsters on scanner
+
+	* higher top speed
+
+	* see whole map on scanner
+
+	* three-way bullets
+
+	* faster shield recovery
+
+	* booby trap (releases monsters)
+
+- monsters drop power pills on death, power pills become bombs
+
+- better start screen, more instructions
+
+- exit portal
+
+- scoring?
