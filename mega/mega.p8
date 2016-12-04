@@ -569,6 +569,45 @@ function hit_wall(a, dx, dy)
   test_map(nx + a.r, ny + a.r)
 end
 
+chests = {
+ [0] = {
+  "fast reload powerup!!",
+  500,
+  function () ship.reload_time = 5 end,
+  function () ship.reload_time = 20 end,
+ },
+ {
+  "bomb bonus powerup!!",
+  0,
+  function () ship.bombs += 10 end,
+  function () end,
+ },
+ {
+  "super shield powerup!!",
+  0,
+  function () ship.shields = 5 end,
+  function () end,
+ },
+ {
+  "diamond bonus powerup!!",
+  0,
+  function () score += 5 end,
+  function () end,
+ }
+}
+
+function open_chest()
+ local chest = chests[flr(#chests * rnd())]
+
+ if(powerup_message_timer > 0) powerdown_callback()
+
+ powerup_message = chest[1]
+ powerup_message_timer = 100
+ powerdown_timer = chest[2]
+ chest[3]()
+ powerdown_callback = chest[4]
+end
+
 function update_bullet(b)
  b.l -= 1
  if b.l < 0 then
@@ -651,7 +690,14 @@ function add_power(x, y)
    if(hit_wall(p, 0, p.dy)) p.dy *= -0.5
   end
 
-  if(closer(p, ship, 5)) ship.bombs += 1 remove_actor(p)
+  if closer(p, ship, 5) then
+   ship.power += 1 
+   if ship.power > 9 then
+    ship.power = 0
+    ship.bombs += 1
+   end
+   remove_actor(p)
+  end
  end
 
  return p
@@ -763,15 +809,15 @@ function update_ship(s)
     b.dx += s.dx
     b.dy += s.dy
    end
-   s.bt = 20
+   s.bt = s.reload_time
   end
 
   s.bm = max(0, s.bm - 1)
-  if btn(3, 1) and s.bm == 0 then 
+  if btn(3, 1) and s.bm == 0 and s.bombs > 0 then 
    local b = add_bomb(s.x, s.y)
    b.dx += s.dx
    b.dy += s.dy
-
+   s.bombs -= 1
    s.bm = 40
   end
 
@@ -780,6 +826,14 @@ function update_ship(s)
    s.shield_timer = 500
    s.shields = min(3, s.shields + 1)
   end
+
+  local cx = flr((s.x + 4) / 8)
+  local cy = flr((s.y + 4) / 8)
+  if mget(cx, cy) == 13 then
+   mset(cx, cy, 0)
+   open_chest()
+  end
+
  end
 
  if hit_wall(s, s.dx, s.dy) then
@@ -833,10 +887,12 @@ function add_ship(x, y)
  s.update = update_ship
  s.draw = draw_ship
  s.jt = 2
- s.shields = 5
+ s.shields = 3
  s.shield_timer = 0
  s.shield_draw_timer = 0
  s.bombs = 3
+ s.power = 0
+ s.reload_time = 20
 
  return s
 end
@@ -1561,6 +1617,9 @@ function _update60()
    end
   end
  end
+
+ powerdown_timer = max(0, powerdown_timer - 1)
+ if(powerdown_timer == 1) powerdown_callback()
 end
 
 -- start draw
@@ -1636,9 +1695,13 @@ function _draw()
  draw_map()
  foreach(particles, draw_particle)
  foreach_nearby_actors(ship, 3, draw_actor)
- spr(9, 0, 0)
  color(6)
- print(ship.bombs, 8, 1)
+ spr(12, 0, 0)
+ print(ship.power, 8, 1)
+ spr(9, 24, 0)
+ print(ship.bombs, 32, 1)
+ spr(101, 48, 0)
+ print(score, 56, 1)
 
  if(btn(4, 1)) draw_scanner() 
  if(btn(5, 1)) grow_veg() 
@@ -1653,6 +1716,11 @@ function _draw()
   ctext("x to fire")
   ctext("d to release bomb")
   ctext("a to grow veg")
+ end
+
+ powerup_message_timer = max(0, powerup_message_timer - 1)
+ if powerup_message_timer > 0 then
+  ctext(powerup_message, 90)
  end
 
  color(5)
@@ -1685,6 +1753,8 @@ screen_y = ship.y + 4 - 64
 screen_dx = 0
 screen_dy = 0
 monster_timer = 100
+powerup_message_timer = 0
+powerdown_timer = 0
 
 music(37)
 __gfx__
