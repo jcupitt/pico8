@@ -1,3 +1,5 @@
+- power pills should just be regular actors, not monsters ... cf. bullets
+
 - crabs walk around edges and wake other monsters
 
   crabs are very light sleepers
@@ -7,6 +9,8 @@
 - powerups in treasure chests
 
   	* faster reload
+
+	* bouncing bullets
 
 	* see monsters on scanner
 
