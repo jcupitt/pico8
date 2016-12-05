@@ -593,11 +593,31 @@ chests = {
   0,
   function () score += 5 end,
   function () end,
- }
+ },
+ {
+  "bouncing bullets powerup!!",
+  500,
+  function () ship.bullet_bounce = true end,
+  function () ship.bullet_bounce = false end,
+ },
+ {
+  "three-way bullet powerup!!",
+  500,
+  function () ship.spread = 0.05  end,
+  function () ship.spread = 0 end,
+ },
+ {
+  "five-way bullet powerup!!",
+  500,
+  function () ship.spread = 0.1  end,
+  function () ship.spread = 0 end,
+ },
 }
 
 function open_chest()
- local chest = chests[flr(#chests * rnd())]
+ -- +1 since # is index of last element, not length of table
+ local i = flr((#chests + 1) * rnd())
+ local chest = chests[i]
 
  if(powerup_message_timer > 0) powerdown_callback()
 
@@ -608,40 +628,48 @@ function open_chest()
  powerdown_callback = chest[4]
 end
 
-function update_bullet(b)
- b.l -= 1
- if b.l < 0 then
-  remove_actor(b)
- end
-
- if hit_wall(b, b.dx, b.dy) then
-  explosion(b.x + 4, b.y + 4, 5) 
-  wake_monsters(b.x + 4, b.y + 4)
-  remove_actor(b)
- end
-
- foreach_nearby_actors(b, 1, function(a)
-  if a != b then
-   if a.monster and collision(b, a) then
-    explosion(b.x + 4, b.y + 4, 10) 
-    remove_actor(b)
-    hit_monster(a)
-   end
-  end
- end)
-end
-
-function add_bullet(x, y, a)
- local b = add_actor(x, y)
+function add_bullet(s, a)
+ local b = add_actor(s.x, s.y)
 
  b.dx = 2 * cos(a)
  b.dy = 2 * sin(a)
+ if not btn(4) then
+  -- strafe mode bullets are absolute
+  b.dx += s.dx
+  b.dy += s.dy
+ end
  b.x += b.dx
  b.y += b.dy
  b.sp = 11
  b.l = 100
  b.r = 2
- b.update = update_bullet
+ b.bullet_bounce = s.bullet_bounce
+
+ b.update = function (b)
+  b.l -= 1
+  if(b.l < 0) remove_actor(b)
+
+  if hit_wall(b, b.dx, b.dy) then
+   if b.bullet_bounce then
+    if(hit_wall(b, b.dx, 0)) b.dx *= -1
+    if(hit_wall(b, 0, b.dy)) b.dy *= -1
+   else
+    explosion(b.x + 4, b.y + 4, 5) 
+    wake_monsters(b.x + 4, b.y + 4)
+    remove_actor(b)
+   end
+  end
+
+  foreach_nearby_actors(b, 1, function(a)
+   if a != b then
+    if a.monster and collision(b, a) then
+     explosion(b.x + 4, b.y + 4, 10) 
+     remove_actor(b)
+     hit_monster(a)
+    end
+   end
+  end)
+ end
 
  return b
 end
@@ -683,12 +711,25 @@ function add_power(x, y)
  p.dx = rnd() - 0.5
  p.dy = rnd() - 0.5
  p.sp = 12
+ p.r = 1
 
  p.update = function (p)
+  local dx = ship.x - p.x
+  local dy = ship.y - p.y
+  local a = atan2(dx, dy)
+
+  p.ddx = 0.2 * cos(a)
+  p.ddy = 0.2 * sin(a)
+
+  p.dx *= 0.99
+  p.dy *= 0.99
+
   if hit_wall(p, p.dx, p.dy) then
    if(hit_wall(p, p.dx, 0)) p.dx *= -0.5
    if(hit_wall(p, 0, p.dy)) p.dy *= -0.5
   end
+
+  max_speed(p, 0.5)
 
   if closer(p, ship, 5) then
    ship.power += 1 
@@ -803,12 +844,10 @@ function update_ship(s)
 
   s.bt = max(0, s.bt - 1)
   if btn(5) and s.bt == 0 then 
-   local b = add_bullet(s.x, s.y, s.angle)
-   if not btn(4) then
-    -- strafe mode bullets are absolute
-    b.dx += s.dx
-    b.dy += s.dy
+   for a = s.angle - s.spread, s.angle + s.spread, 0.05 do
+    add_bullet(s, a)
    end
+
    s.bt = s.reload_time
   end
 
@@ -824,7 +863,7 @@ function update_ship(s)
   s.shield_timer = max(0, ship.shield_timer - 1)
   if s.shield_timer == 1 then
    s.shield_timer = 500
-   s.shields = min(3, s.shields + 1)
+   if(s.shields < 3) s.shields += 1
   end
 
   local cx = flr((s.x + 4) / 8)
@@ -893,6 +932,8 @@ function add_ship(x, y)
  s.bombs = 3
  s.power = 0
  s.reload_time = 20
+ s.bullet_bounce = false
+ s.spread = 0
 
  return s
 end
@@ -1708,7 +1749,7 @@ function _draw()
 
  if not alive then
   color(6)
-  ctext("mega-roids", 20)
+  ctext("mega-roids", 30)
   ctext("")
   ctext("left/right rotate ship")
   ctext("up to thrust")
@@ -1806,14 +1847,14 @@ __gfx__
 00000000000000000071000000100000010010000001700000077000000000000ee8cee00033e30000333b000033e30000333c00003333000030333000333300
 0000000000000000007700000010000010077000700770000007700000000000eeec8eee3333333333c333333b33333333333333333333330000303000000000
 0000000000000000000000000000000000000000070000000000000000000000dddddddd00088000000880000008800000088000000880000000003000000000
-03000000000000000880000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-03030000088808808008088008880880000008000076670000676600006676000000000000000000000000000000000000000000000000000000000000000000
-03330300800080080000800880008008008880800766766006766760066766700000000000000000000000000000000000000000000000000000000000000000
-8333330000cc8cc800cc888000cc8cc808cc8c800667665007667650067667500000000000000000000000000000000000000000000000000000000000000000
-8333330000cc888000cc8cc000cc888080cc88c00076650000676500006675000000000000000000000000000000000000000000000000000000000000000000
-03330300008888800088888000888880008888800006500000065000000750000000000000000000000000000000000000000000000000000000000000000000
-0303000000cc8cc000cc8cc000cc8cc000cc8cc00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-0300000000cc8cc000cc8cc000cc8cc000cc8cc00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+03000000000000000880000000000000000000000000000000000000000000000000009900000000000000000000000000000000000000000000000000000000
+0303000008880880800808800888088000000800007667000067660000667600000999aa00000000000000000000000000000000000000000000000000000000
+0333030080008008000080088000800800888080076676600676676006676670009aaaaa00000000000000000000000000000000000000000000000000000000
+8333330000cc8cc800cc888000cc8cc808cc8c8006676650076676500676675009aaaaaa00000000000000000000000000000000000000000000000000000000
+8333330000cc888000cc8cc000cc888080cc88c000766500006765000066750009aaaaaa00000000000000000000000000000000000000000000000000000000
+033303000088888000888880008888800088888000065000000650000007500009aaaaae00000000000000000000000000000000000000000000000000000000
+0303000000cc8cc000cc8cc000cc8cc000cc8cc00000000000000000000000009aaaaae800000000000000000000000000000000000000000000000000000000
+0300000000cc8cc000cc8cc000cc8cc000cc8cc00000000000000000000000009aaaae8800000000000000000000000000000000000000000000000000000000
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
