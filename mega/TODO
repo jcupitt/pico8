@@ -1,3 +1,5 @@
+- have distant monsters wake up occasionally
+
 - crabs walk around edges and wake other monsters
 
   crabs are very light sleepers
@@ -12,14 +14,8 @@
 
 	* see whole map on scanner
 
-	* three-way bullets
-
 	* faster shield recovery
 
 	* booby trap (releases monsters)
 
 - better start screen, more instructions
-
-- exit portal
-
-- scoring?
