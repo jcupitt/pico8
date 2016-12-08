@@ -1,3 +1,7 @@
+- spawner does not always orient correctly
+
+- tune monster behaviours
+
 - have distant monsters wake up occasionally
 
 - crabs walk around edges and wake other monsters

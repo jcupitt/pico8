@@ -1,5 +1,5 @@
 pico-8 cartridge // http://www.pico-8.com
-version 8
+version 10
 __lua__
 -- mega-roids
 -- jcupitt
@@ -297,7 +297,6 @@ end
 -- vegetation templates
 
 vegetation = {
- -- vines
  [42] = {{0.1, 1, 1, 60}, {0.1, 1, 1, 62}, {0.1, 1, 1, 61}},
  [59] = {{0.1, -1, 1, 59}, {0.2, -1, 1, 63}},
  [60] = {{0.1, 1, 1, 60}, {0.5, 1, 1, 62}, {0.4, 1, 1, 61}},
@@ -305,8 +304,6 @@ vegetation = {
  [63] = {{0.1, 1, 1, 60}, {0.4, 1, 1, 62}, {0.1, 1, 1, 61}, {0.1, -1, 0, 105}},
  [105] = {{0.1, -1, 1, 59}, {0.2, -1, 1, 63}, {0.1, -1, 1, 62}},
  [106] = {{0.1, 1, 1, 60}, {0.2, 1, 1, 61}, {0.1, 1, 1, 62}},
-
- -- mushrooms
  [46] = {{0.1, 1, 0, 107}},
  [47] = {{0.1, -1, 0, 108}, {0.1, 0, -1, 108}},
  [107] = {{0.1, 1, 0, 107}, {0.1, 0, 1, 107}, 
@@ -315,21 +312,25 @@ vegetation = {
   {0.1, -1, 0, 108}, {0.1, 0, -1, 108}},
 }
 
-function grow_veg()
- -- do a single scanline on each call
- if(not current_y) current_y = 0
+-- do growth_rate cells on each call
+function grow_veg(growth_rate)
+ if not current_x then
+  current_x = 0
+  current_y = 0
+ end
 
- current_y = (current_y + 1) % 63
+ for i = 1, growth_rate do
+  current_x = (current_x + 1) % 127
+  if(current_x == 0) current_y = (current_y + 1) % 63
 
- for x = 0, 127 do
-  local v = mget(x, current_y)
+  local v = mget(current_x, current_y)
 
   if growth(v) then
    local g = vegetation[v]
 
    if g then
     for i = 1, #g do
-     local tx = x + g[i][2]
+     local tx = current_x + g[i][2]
      local ty = current_y + g[i][3]
 
      if rnd() < g[i][1] and mget(tx, ty) == 0 then
@@ -387,7 +388,7 @@ function generate_world(object_table)
 
  fix_tiles(object_probs, 0, 0, 127, 63, true)
  fix_tiles(edge_probs, 0, 0, 127, 63, true)
- for i = 1, 300 do grow_veg() end
+ for i = 1, 5 do grow_veg(128 * 64) end
 end
 
 -- start actors
@@ -617,7 +618,7 @@ chests = {
  {
   "diamond bonus powerup!!",
   0,
-  function () score += 5 end,
+  function () diamonds += 5 end,
   function () end,
  },
  {
@@ -715,7 +716,7 @@ function add_diamond(x, y)
    if(hit_wall(d, 0, d.dy)) d.dy *= -0.5
   end
 
-  if(closer(d, ship, 5)) score += 1 remove_actor(d)
+  if(closer(d, ship, 5)) diamonds += 1 remove_actor(d)
  end
 
  d.draw = function (d)
@@ -781,7 +782,7 @@ function add_portal(x, y)
 
  p.update = function (p) 
   if closer(p, ship, 4) then
-   if score >= 10 then
+   if diamonds >= 10 then
     powerup_message = "you warp to the next level!!"
    else
     powerup_message = "collect 10 diamonds to open"
@@ -812,6 +813,7 @@ function hit_ship()
   ship.shields -= 1
   ship.shield_timer = 500
  else
+  n_ships += 1
   alive = false
   dead_timer = 200
  end
@@ -1144,7 +1146,7 @@ drop = {
  max_speed = 1000,
 
  transition = {
-  [1] = {{1, 10000, 1}}
+  [1] = {10000, {1, 1}}
  },
 
  update = {
@@ -1175,15 +1177,15 @@ octo = {
  max_speed = 1.05,
 
  transition = {
-  [1] = {{1, 200, 2}},			
-  [2] = {{0.5, 500, 1}, {1, 200, 4}},
-  [4] = {{1, 500, 1}},		
+  [1] = {200, {1, 2}},			
+  [2] = {500, {0.5, 1}, {1, 4}},
+  [4] = {500, {1, 1}},		
  },
 
  update = {
   [1] = function (m) 
    hover(m)
-   if(closer(m, ship, 30)) set_mood(m, 100, 2)
+   if(closer(m, ship, 30)) set_mood(m, 2)
   end,
   [2] = function (m) 
    accelerate_to(m, ship.x, ship.y, 0.0002) 
@@ -1210,17 +1212,17 @@ bat = {
  health = 5,
 
  transition = {
-  [1] = {{1, 200, 2}},			
-  [2] = {{0.5, 500, 1}, {1, 200, 4}},
-  [3] = {{1, 500, 1}},
-  [4] = {{1, 500, 1}},		
-  [5] = {{1, 500, 2}},		
+  [1] = {200, {1, 2}},			
+  [2] = {500, {0.5, 1}, {1, 4}},
+  [3] = {500, {1, 1}},
+  [4] = {500, {1, 1}},		
+  [5] = {500, {1, 2}},		
  },
 
  update = {
   [1] = function (m)
    hover(m)
-   if(closer(m, ship, 30)) set_mood(m, 100, 2)
+   if(closer(m, ship, 30)) set_mood(m, 2)
   end,
   [2] = function (m) accelerate_to(m, ship.x, ship.y, 0.0002) end,
   [3] = function (m) accelerate_away(m, ship.x, ship.y, 0.0003) end,
@@ -1234,9 +1236,9 @@ bat = {
 
  hit = function (m)
   if m.health == 2 and rnd() < 0.5 then
-   set_mood(m, 200, 5)
+   set_mood(m, 5)
   else
-   set_mood(m, 200, 3)
+   set_mood(m, 3)
   end
  end
 }
@@ -1251,7 +1253,7 @@ segment = {
  max_speed = 1000,
 
  transition = {
-  [1] = {{1, 10000, 1}}
+  [1] = {10000, {1, 1}}
  },
 
  update = {
@@ -1290,9 +1292,9 @@ centi = {
  max_speed = 0.5,
 
  transition = {
-  [1] = {{1, 500, 2}},			
-  [2] = {{1, 500, 4}},			
-  [4] = {{1, 100, 1}}		
+  [1] = {500, {1, 2}},			
+  [2] = {500, {1, 4}},			
+  [4] = {500, {1, 1}}		
  },
 
  add = function (c)
@@ -1308,7 +1310,7 @@ centi = {
  update = {
   [1] = function (m) 
    circle_to(m, 512, 256, 0.002, 0.5)
-   if(closer(m, ship, 30)) set_mood(m, 100, 2)
+   if(closer(m, ship, 30)) set_mood(m, 2)
   end,
   [2] = function (m) circle_to(m, ship.x, ship.y, 0.002, 0.5) end,
   [4] = function (m) 
@@ -1331,15 +1333,15 @@ mush = {
  max_speed = 0.5,
 
  transition = {
-  [1] = {{1, 200, 2}},
-  [2] = {{1, 500, 4}},			
-  [4] = {{1, 500, 1}}
+  [1] = {200, {1, 2}},
+  [2] = {500, {1, 4}},			
+  [4] = {500, {1, 1}}
  },
 
  update = {
   [1] = function (m) 
    hover(m)
-   if(closer(m, ship, 30)) set_mood(m, 100, 2)
+   if(closer(m, ship, 30)) set_mood(m, 2)
   end,
   [2] = function (m) accelerate_to(m, ship.x, ship.y, 0.0002) end,
   [4] = function (m) 
@@ -1362,15 +1364,15 @@ crab = {
  max_speed = 1.05,
 
  transition = {
-  [1] = {{1, 200, 2}},
-  [2] = {{1, 500, 4}},			
-  [4] = {{1, 500, 1}}
+  [1] = {200, {1, 2}},
+  [2] = {500, {1, 4}},			
+  [4] = {500, {1, 1}}
  },
 
  update = {
   [1] = function (m) 
    hover(m) 
-   if(closer(m, ship, 30)) set_mood(m, 100, 2)
+   if(closer(m, ship, 30)) set_mood(m, 2)
   end,
   [2] = function (m) accelerate_to(m, ship.x, ship.y, 0.0002) end,
   [4] = function (m) 
@@ -1392,8 +1394,8 @@ present = {
  max_speed = 0.4,
 
  transition = {
-  [1] = {{1, 100, 2}},
-  [2] = {{1, 10000, 2}},
+  [1] = {100, {1, 2}},
+  [2] = {10000, {1, 2}},
  },
 
  update = {
@@ -1416,15 +1418,15 @@ tree = {
  max_speed = 0.2,
 
  transition = {
-  [1] = {{1, 200, 2}},
-  [2] = {{1, 500, 4}},			
-  [4] = {{1, 500, 1}}
+  [1] = {200, {1, 2}},
+  [2] = {500, {1, 4}},			
+  [4] = {500, {1, 1}}
  },
 
  update = {
   [1] = function (m) 
    hover(m) 
-   if(closer(m, ship, 50)) set_mood(m, 100, 2)
+   if(closer(m, ship, 50)) set_mood(m, 2)
   end,
   [2] = function (m) 
    accelerate_to(m, ship.x, ship.y, 0.0002) 
@@ -1438,6 +1440,53 @@ tree = {
    try_roost(m) 
   end
  }
+}
+
+spawn = {
+ -- if rock to right, down, left, up
+ roost = {109, 110, 111, 88},
+ sprite = 88,
+ n_sprites = 1,
+
+ eyes = false,
+
+ max_speed = 0,
+
+ transition = {
+  [1] = {300, {1, 4}},
+  [4] = {1000, {1, 1}},
+ },
+
+ update = {
+  [1] = function (m) 
+   if not m.spawn_timer then
+    printh("spawn init, angle == " .. m.angle)
+    m.spawn_timer = 100
+   end
+
+   m.spawn_timer = (m.spawn_timer + 1) % 100
+   if m.spawn_timer == 0 and #nearby_actors(m, 2) < 50 then
+    local n = flr(rnd() * 6 + 1)
+    local mt = monster_table[n]
+    local nm = add_monster(m.x, m.y, mt)
+
+    nm.angle = m.angle
+    nm.dx = 3 * cos(nm.angle)
+    nm.dy = 3 * sin(nm.angle)
+   end
+  end,
+  [4] = function (m) 
+   printh("spawn sleep")
+   try_roost(m) 
+  end
+ },
+
+ draw = function (m)
+  local nx = m.x - screen_x
+  local ny = m.y - screen_y
+
+  spr(spawn.roost[(m.angle * 4 + 2) % 4 + 1], nx, ny)
+ end,
 }
 
 --[[
@@ -1482,10 +1531,12 @@ monster_table = {
  mush,
  tree,
  crab,
+ spawn,
 }
 
-function set_mood(m, t, i)
+function set_mood(m, i)
  if m.mood != i then
+  local t = m.mt.transition[i][1]
   m.timer = 0.5 * (t * rnd() + t)
   m.mood = i
   m.dx = 0
@@ -1493,14 +1544,16 @@ function set_mood(m, t, i)
  end
 end
 
-function monster_transition(m)
+function transition_monster(m)
  m.timer = max(0, m.timer - 1)
  if m.timer == 0 then
   local actions = m.mt.transition[m.mood]
 
-  for i = 1, #actions do
+  for i = 2, #actions do
    if rnd() < actions[i][1] then
-    set_mood(m, actions[i][2], actions[i][3])
+    local new_mood = actions[i][2]
+
+    set_mood(m, new_mood)
     break
    end
   end
@@ -1526,7 +1579,7 @@ function add_monster(x, y, mt)
  m.sleeping = false
  m.angle = 0
  m.mood = 1
- m.timer = 0
+ m.timer = mt.transition[m.mood][1]
  m.jiggle = 0
  m.blink_timer = 60
  m.sp = m.mt.sprite
@@ -1534,7 +1587,7 @@ function add_monster(x, y, mt)
  m.update = function (m)
   m.f = (m.f + 0.2) % m.mt.n_sprites
 
-  monster_transition(m)
+  transition_monster(m)
 
   m.mt.update[m.mood](m)
 
@@ -1548,26 +1601,30 @@ function add_monster(x, y, mt)
  end
 
  m.draw = function (m) 
-  local nx = m.x - screen_x
-  local ny = m.y - screen_y
+  if m.mt.draw then
+   m.mt.draw(m)
+  else
+   local nx = m.x - screen_x
+   local ny = m.y - screen_y
 
-  spr(m.sp + m.f, nx, ny)
-  if m.mt.eyes then
-   local eye
+   spr(m.sp + m.f, nx, ny)
+   if m.mt.eyes then
+    local eye
 
-   m.jiggle = (m.jiggle + 0.2) % 4
-   eye = eye_sprites[m.mood]
-   m.blink_timer = max(0, m.blink_timer - 1)
-   if(m.blink_timer < 5) eye = 78
-   if m.blink_timer == 0 then
-    local time
-
-    time = 60
-    -- fast blink for sleepy 
-    if(m.mood == 4) time = 10
-    m.blink_timer = time * rnd() + time
+    m.jiggle = (m.jiggle + 0.2) % 4
+    eye = eye_sprites[m.mood]
+    m.blink_timer = max(0, m.blink_timer - 1)
+    if(m.blink_timer < 5) eye = 78
+    if m.blink_timer == 0 then
+     local time
+ 
+     time = 60
+     -- fast blink for sleepy 
+     if(m.mood == 4) time = 10
+     m.blink_timer = time * rnd() + time
+    end
+    spr(eye, nx + m.mt.eye_x, ny + m.mt.eye_y + eye_jiggle[flr(m.jiggle)])
    end
-   spr(eye, nx + m.mt.eye_x, ny + m.mt.eye_y + eye_jiggle[flr(m.jiggle)])
   end
  end
 
@@ -1795,8 +1852,8 @@ function draw_scanner()
  rect(56, 56, 72, 72, 7)
 
  color(15)
- print("score", 0, 110)
- print(score, 0, 120)
+ print("diamonds", 0, 110)
+ print(diamonds, 0, 120)
 
  color(5)
  print("#nearby " .. #nearby_actors(ship, 5), 80, 100)
@@ -1816,12 +1873,13 @@ function _draw()
  spr(9, 24, 0)
  print(ship.bombs, 32, 1)
  spr(101, 48, 0)
- print(score, 56, 1)
+ print(diamonds, 56, 1)
+ spr(112, 100, 0)
+ print(n_ships, 108, 1)
 
  if(btn(4, 1)) draw_scanner() 
 
- veg_timer = (veg_timer + 1) % growth_rate
- if(veg_timer == 0) grow_veg() 
+ grow_veg(growth_rate) 
 
  if not alive then
   color(6)
@@ -1853,6 +1911,7 @@ generate_world({
  {0.05, crab},
  {0.05, centi},
  {0.05, tree},
+ {0.05, spawn},
 })
 build_actor_map()
 add_stars()
@@ -1860,7 +1919,8 @@ add_stars()
 -- game state
 
 reset_explored()
-score = 0
+diamonds = 0
+n_ships = 1
 dead_timer = 200
 add_portal(512, 256)
 ship = add_ship(512, 768)
@@ -1872,7 +1932,6 @@ screen_dy = 0
 monster_timer = 100
 powerup_message_timer = 0
 powerdown_timer = 0
-veg_timer = 0
 growth_rate = 10
 
 music(37)
@@ -1925,20 +1984,20 @@ __gfx__
 00000000000000000071000000100000010010000001700000077000000000000ee8cee00033e30000333b000033e30000333c00003333000030333000333300
 0000000000000000007700000010000010077000700770000007700000000000eeec8eee3333333333c333333b33333333333333333333330000303000000000
 0000000000000000000000000000000000000000070000000000000000000000dddddddd00088000000880000008800000088000000880000000003000000000
-03000000000000000880000000000000000000000000000000000000000000000000009900000033300000000088880000666600000000000000000000000000
-0303000008880880800808800888088000000800007667000067660000667600000999aa00000300030000000887888006777760000000000000000000000000
-0333030080008008000080088000800800888080076676600676676006676670009aaaaa00003000003000008888888867787776000000000000000000000000
-8333330000cc8cc800cc888000cc8cc808cc8c8006676650076676500676675009aaaaaa0b00300000030b008888887868777786000000000000000000000000
-8333330000cc888000cc8cc000cc888080cc88c000766500006765000066750009aaaaaa00330b000b0300008788888867777776000000000000000000000000
-033303000088888000888880008888800088888000065000000650000007500009aaaaae03000000000030008887888767787876000000000000000000000000
-0303000000cc8cc000cc8cc000cc8cc000cc8cc00000000000000000000000009aaaaae830000000000003300888878006777760000000000000000000000000
-0300000000cc8cc000cc8cc000cc8cc000cc8cc00000000000000000000000009aaaae8830000000000000030088880000666600000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+03000000000000000880000000000000000000000000000000000000000000000000009900000033300000000088880000666600000000edddddddddde000000
+0303000008880880800808800888088000000800007667000067660000667600000999aa0000030003000000088788800677776000000eedeee8ceeedee00000
+0333030080008008000080088000800800888080076676600676676006676670009aaaaa000030000030000088888888677877760ee0eeed0eec8ee0deee0ee0
+8333330000cc8cc800cc888000cc8cc808cc8c8006676650076676500676675009aaaaaa0b00300000030b008888887868777786000eec8d00eeee00dc8ee000
+8333330000cc888000cc8cc000cc888080cc88c000766500006765000066750009aaaaaa00330b000b0300008788888867777776000ee8cd000ee000d8cee000
+033303000088888000888880008888800088888000065000000650000007500009aaaaae030000000000300088878887677878760ee0eeed00e00e00deee0ee0
+0303000000cc8cc000cc8cc000cc8cc000cc8cc00000000000000000000000009aaaaae83000000000000330088887800677776000000eed00e00e00dee00000
+0300000000cc8cc000cc8cc000cc8cc000cc8cc00000000000000000000000009aaaae8830000000000000030088880000666600000000ed00000000de000000
+00070000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00070000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00707000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00707000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+07000700000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+07000700000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
@@ -2006,7 +2065,7 @@ __gfx__
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 __gff__
-0002020202030103030001000100010101010101010101010101010101010101010302020202030202020501010105050303030303030302020202040400040403020202020202020203030303020202020202020202020202020202020303030302020202000000000404050500000000000000000000000000000000000000
+0002020202030103030001000100010101010101010101010101010101010101010302020202030202020501010105050303030303030302020202040400040403020202020202020203030303020202020202020202020203020202020303030302020202000000000404050503030300000000000000000000000000000000
 0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 __map__
 1000100000000000000000171700000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
