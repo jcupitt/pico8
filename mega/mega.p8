@@ -18,12 +18,11 @@ function add_particle(x, y)
  p.y = y
  p.dx = 0
  p.dy = 0
- p.ddx = 0
- p.ddy = 0
- p.l = 30		-- life
+ p.drag = 0
+ p.life = 30
  p.dc = 0		-- colour delta
  p.c = 0
- p.s = 0		-- size ... 0 is one pixel across
+ p.size = 0		-- size ... 0 is one pixel across
 
  add(particles, p)
 
@@ -41,10 +40,11 @@ function explosion(x, y, m)
 
   p.dx = s * sin(a)
   p.dy = s * cos(a)
-  p.l = 40 * rnd() + 5
+  p.life = 40 * rnd() + 5
   p.dc = 1
   p.c = #particle_cmap * rnd()
-  p.s = rnd()
+  p.size = rnd()
+  p.drag = 0.02
  end
 end
 
@@ -60,9 +60,41 @@ function spiral_explosion(x, y)
 
   p.dx = s * sin(a)
   p.dy = s * cos(a)
-  p.l = 5 * s + 5
+  p.life = 5 * s + 5
   p.dc = 1
   p.c = #particle_cmap * rnd()
+  p.drag = 0.1
+ end
+end
+
+function reanimate_circle(x, y)
+ for n = 1, 50 do
+  local a = n / 50
+  local px = x + 50 * cos(a)
+  local py = y + 50 * sin(a)
+  local p = add_particle(px, py)
+
+  p.life = 60
+  p.dc = 1
+  p.c = #particle_cmap * rnd()
+  p.size = 3
+ end
+end
+
+function reanimate_in(x, y)
+ for n = 1, 50 do
+  local a = n / 50
+  local px = x + 50 * cos(a)
+  local py = y + 50 * sin(a)
+  local p = add_particle(px, py)
+
+  p.dx = 0.1 * cos(a + 0.5)
+  p.dy = 0.1 * sin(a + 0.5)
+  p.life = 40
+  p.dc = 1
+  p.c = #particle_cmap * rnd()
+  p.size = 3
+  p.drag = -0.1
  end
 end
 
@@ -75,10 +107,11 @@ function jet(s, a)
  a += (rnd() - 0.5) * 0.15
  j.dx = sin(a) + s.dx
  j.dy = cos(a) + s.dy
- j.l = 15 * rnd() + 15
+ j.life = 15 * rnd() + 15
  j.dc = 0.5
  j.c = 15 * rnd()
- j.s = 0
+ j.size = 0
+ j.drag = 0.04
 end
 
 function spark(m)
@@ -86,28 +119,29 @@ function spark(m)
 
  s.dx = m.dx + 0.5 * rnd()
  s.dy = m.dy + 0.5 * rnd()
- s.l = 15 * rnd() + 15
+ s.life = 15 * rnd() + 15
  s.dc = 0.5
  s.c = 15 * rnd()
- s.s = 0
+ s.size = 0
+ s.drag = 0.1
 end
 
 function update_particle(p)
- p.dx += p.ddx - p.dx / 10
- p.dy += p.ddy - p.dy / 10
+ p.dx -= p.dx * p.drag
+ p.dy -= p.dy * p.drag
  p.x += p.dx
  p.y += p.dy
  p.c = (p.c + p.dc) % #particle_cmap
- p.l -= 1
+ p.life -= 1
 
- if(p.l < 0) del(particles, p)
+ if(p.life < 0) del(particles, p)
 end
 
 function draw_particle(p)
  local x = p.x - screen_x
  local y = p.y - screen_y
 
- rectfill(x, y, x + p.s, y + p.s, particle_cmap[flr(p.c)])
+ rectfill(x, y, x + p.size, y + p.size, particle_cmap[flr(p.c)])
 end
 
 -- star field
@@ -729,6 +763,45 @@ function add_bullet(s, a)
  return b
 end
 
+function add_enemy_bullet(m, t)
+ local b = add_actor(m.x, m.y)
+
+ local dx = t.x - m.x
+ local dy = t.y - m.y
+ local a = atan2(dx, dy)
+
+ b.dx = cos(a)
+ b.dy = sin(a)
+
+ b.x += b.dx
+ b.y += b.dy
+ b.sp = 87
+ b.l = 100
+ b.radius = 1
+ b.st = 0
+
+ b.update = function (b)
+  b.l -= 1
+  if(b.l < 0) remove_actor(b)
+
+  b.st = (b.st + 1) % 5
+  if(b.st == 0) spark(b)
+
+  if hit_wall(b, b.dx, b.dy) then
+   explosion(b.x + 4, b.y + 4, 5) 
+   wake_monsters(b.x + 4, b.y + 4)
+   remove_actor(b)
+  end
+
+  if closer(b, ship, 4) then
+   hit_ship()
+   remove_actor(b)
+  end
+ end
+
+ return b
+end
+
 function add_diamond(x, y)
  local d = add_actor(x, y)
 
@@ -804,7 +877,7 @@ function add_portal(x, y)
  local p = add_actor(x, y)
 
  p.update = function (p) 
-  if closer(p, ship, 4) then
+  if closer(p, ship, 10) then
    if diamonds >= 10 then
     powerup_message = "you warp to the next level!!"
    else
@@ -819,10 +892,10 @@ function add_portal(x, y)
   local nx = p.x - screen_x - 8
   local ny = p.y - screen_y - 8
 
-  spr(104, nx, ny, 1, 1, false, false)
-  spr(104, nx + 8, ny, 1, 1, true, false)
-  spr(104, nx, ny + 8, 1, 1, false, true)
-  spr(104, nx + 8, ny + 8, 1, 1, true, true)
+  spr(104, nx - 4, ny - 4, 1, 1, false, false)
+  spr(104, nx + 4, ny - 4, 1, 1, true, false)
+  spr(104, nx - 4, ny + 4, 1, 1, false, true)
+  spr(104, nx + 4, ny + 4, 1, 1, true, true)
  end
 
  return p
@@ -840,6 +913,25 @@ function hit_ship()
   alive = false
   dead_timer = 200
  end
+end
+
+function update_reanimate()
+ if(reanimate_timer == 0) return
+ reanimate_timer = max(0, reanimate_timer - 1)
+
+ if reanimate_timer == 99 then
+  reanimate_circle(ship.x, ship.y)
+ elseif reanimate_timer == 40 then
+  reanimate_in(ship.x, ship.y)
+ elseif reanimate_timer == 0 then
+  ship.shields = 3
+  alive = true 
+ end
+end
+
+function reanimate_ship(ship)
+ if(reanimate_timer > 0) return
+ reanimate_timer = 100
 end
 
 function update_bomb(b)
@@ -1044,13 +1136,7 @@ function fire_at(m, t, r)
  if(not m.bullet_timer) m.bullet_timer = 0
  m.bullet_timer = (m.bullet_timer + 1) % r
  if m.bullet_timer == 1 then
-  local b = add_monster(m.x, m.y, drop)
-  local dx = t.x - m.x
-  local dy = t.y - m.y
-  local a = atan2(dx, dy)
-
-  b.dx = cos(a)
-  b.dy = sin(a)
+  add_enemy_bullet(m, t)
  end
 end
 
@@ -1155,36 +1241,6 @@ end
 	5 psycho (suicide attack)
 
 ]]
-
-drop = {
- roost = nil,
- sprite = 87,
- n_sprites = 1,
- radius = 1,
-
- eyes = false,
-
- max_speed = 1000,
-
- transition = {
-  [1] = {10000, {1, 1}}
- },
-
- update = {
-  [1] = function (m) 
-   if not m.life then
-    m.life = 100
-    m.st = 3
-   end
-
-   m.st = (m.st + 1) % 5
-   if(m.st == 0) spark(m)
-
-   m.life = max(0, m.life - 1)
-   if(m.life == 0) remove_actor(m)
-  end
- }
-}
 
 octo = {
  roost = {7, 49, 50, 5},
@@ -1452,13 +1508,13 @@ tree = {
   [2] = function (m) 
    accelerate_to(m, ship.x, ship.y, 0.0002) 
 
-   if not m.bullet_timer then
-    m.bullet_timer = 0
+   if not m.present_timer then
+    m.present_timer = 0
     m.n_presents = 0
    end
 
-   m.bullet_timer = (m.bullet_timer + 1) % 100
-   if m.bullet_timer == 0 and m.n_presents < 4 then
+   m.present_timer = (m.present_timer + 1) % 100
+   if m.present_timer == 0 and m.n_presents < 4 then
     add_monster(m.x, m.y, present)
     m.n_presents += 1
    end
@@ -1489,17 +1545,21 @@ spawn = {
   [1] = function (m) 
    if not m.spawn_timer then
     m.spawn_timer = 100
+    m.n_monsters = 0
    end
 
    m.spawn_timer = (m.spawn_timer + 1) % 100
-   if m.spawn_timer == 0 and #nearby_actors(m, 2) < 20 then
-    local n = flr(rnd() * 6 + 1)
+   if m.spawn_timer == 0 and m.n_monsters < 5 then
+    -- 5 means we don't spwan spwans or trees
+    local n = flr(rnd() * 5 + 1)
     local mt = monster_table[n]
     local nm = add_monster(m.x, m.y, mt)
 
     nm.angle = m.angle
     nm.dx = 3 * cos(nm.angle)
     nm.dy = 3 * sin(nm.angle)
+
+    m.n_monsters += 1
    end
   end,
   [4] = function (m) 
@@ -1555,8 +1615,8 @@ monster_table = {
  bat,
  centi,
  mush,
- tree,
  crab,
+ tree,
  spawn,
 }
 
@@ -1780,10 +1840,11 @@ function _update60()
  if not alive then 
   dead_timer = max(0, dead_timer - 1)
   if dead_timer == 0 then 
-   ship.shields = 3
-   alive = true 
+   reanimate_ship()
   end
  end
+
+ update_reanimate()
 
  monster_timer = max(0, monster_timer - 1)
  if monster_timer == 0 then
@@ -1944,9 +2005,10 @@ add_stars()
 reset_explored()
 diamonds = 0
 n_ships = 1
-dead_timer = 200
 add_portal(512, 256)
 ship = add_ship(512, 768)
+dead_timer = 200
+reanimate_timer = 0
 alive = false
 screen_x = ship.x + 4 - 64
 screen_y = ship.y + 4 - 64
