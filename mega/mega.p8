@@ -515,7 +515,9 @@ function add_actor(x, y)
  a.ddy = 0
  a.sp = 1	-- base sprite number
  a.f = 0	-- frame of animation
- a.r = 3	-- radius
+ a.radius = 3
+ a.bounce = 0.5	-- bounce off walls
+ a.drag = 0.02
 
  -- set false when removed from actor table and being removed from system
  a.alive = true	
@@ -567,7 +569,7 @@ function closer(a, b, d)
 end
 
 function collision(a, b)
- return closer(a, b, a.r + b.r)
+ return closer(a, b, a.radius + b.radius)
 end
 
 -- limit actor's max speed ... scale the unit vector
@@ -590,10 +592,36 @@ function hit_wall(a, dx, dy)
  local nx = a.x + dx + 4
  local ny = a.y + dy + 4
 
- return test_map(nx - a.r, ny - a.r) or
-  test_map(nx + a.r, ny - a.r) or
-  test_map(nx - a.r, ny + a.r) or
-  test_map(nx + a.r, ny + a.r)
+ return test_map(nx - a.radius, ny - a.radius) or
+  test_map(nx + a.radius, ny - a.radius) or
+  test_map(nx - a.radius, ny + a.radius) or
+  test_map(nx + a.radius, ny + a.radius)
+end
+
+-- test dx/dy and bounce
+function bounce(a)
+ if hit_wall(a, a.dx, a.dy) then
+  if hit_wall(a, a.dx, 0) then
+   local ndx = -a.bounce * a.dx
+
+   if not hit_wall(a, ndx, 0) then
+    a.dx = ndx
+   else
+    a.dx = 0
+   end
+  end
+
+  -- we know the x movement is OK, use that and just change y
+  if hit_wall(a, a.dx, a.dy) then
+   local ndy = -a.bounce * a.dy
+
+   if not hit_wall(a, a.dx, ndy) then
+    a.dy = ndy
+   else
+    a.dy = 0
+   end
+  end
+ end
 end
 
 chests = {
@@ -669,7 +697,8 @@ function add_bullet(s, a)
  b.y += b.dy
  b.sp = 11
  b.l = 100
- b.r = 2
+ b.radius = 1
+ b.bounce = 1
  b.bullet_bounce = s.bullet_bounce
 
  b.update = function (b)
@@ -678,8 +707,7 @@ function add_bullet(s, a)
 
   if hit_wall(b, b.dx, b.dy) then
    if b.bullet_bounce then
-    if(hit_wall(b, b.dx, 0)) b.dx *= -1
-    if(hit_wall(b, 0, b.dy)) b.dy *= -1
+    bounce(b)
    else
     explosion(b.x + 4, b.y + 4, 5) 
     wake_monsters(b.x + 4, b.y + 4)
@@ -711,11 +739,7 @@ function add_diamond(x, y)
  d.sparkle = 0
 
  d.update = function (d)
-  if hit_wall(d, d.dx, d.dy) then
-   if(hit_wall(d, d.dx, 0)) d.dx *= -0.5
-   if(hit_wall(d, 0, d.dy)) d.dy *= -0.5
-  end
-
+  bounce(d)
   if(closer(d, ship, 5)) diamonds += 1 remove_actor(d)
  end
 
@@ -737,7 +761,9 @@ function add_power(x, y)
 
  p.dx = rnd() - 0.5
  p.dy = rnd() - 0.5
- p.r = 1
+ p.radius = 1
+ p.bounce = 0
+ p.drag = 0.9
 
  p.update = function (p)
   local dx = ship.x - p.x
@@ -750,10 +776,7 @@ function add_power(x, y)
   p.dx *= 0.9
   p.dy *= 0.9
 
-  if hit_wall(p, p.dx, p.dy) then
-   if(hit_wall(p, p.dx, 0)) p.dx = 0
-   if(hit_wall(p, 0, p.dy)) p.dy = 0
-  end
+  bounce(p)
 
   max_speed(p, 1)
 
@@ -944,10 +967,7 @@ function update_ship(s)
 
  end
 
- if hit_wall(s, s.dx, s.dy) then
-  if(hit_wall(s, s.dx, 0)) s.dx *= -0.1
-  if(hit_wall(s, 0, s.dy)) s.dy *= -0.1
- end
+ bounce(s)
 end
 
 shield_radius = {5, 8, 11, 14, 17}
@@ -988,7 +1008,7 @@ end
 function add_ship(x, y)
  local s = add_actor(x, y)
 
- s.r = 2
+ s.radius = 2
  s.angle = 0.25
  s.bt = 0
  s.bm = 0
@@ -1001,6 +1021,7 @@ function add_ship(x, y)
  s.bombs = 3
  s.power = 0
  s.reload_time = 20
+ s.bounce = 0.1
  s.bullet_bounce = false
  s.spread = 0
 
@@ -1419,7 +1440,7 @@ tree = {
 
  transition = {
   [1] = {200, {1, 2}},
-  [2] = {500, {1, 4}},			
+  [2] = {200, {1, 4}},			
   [4] = {500, {1, 1}}
  },
 
@@ -1431,9 +1452,16 @@ tree = {
   [2] = function (m) 
    accelerate_to(m, ship.x, ship.y, 0.0002) 
 
-   if(not m.bullet_timer) m.bullet_timer = 0
+   if not m.bullet_timer then
+    m.bullet_timer = 0
+    m.n_presents = 0
+   end
+
    m.bullet_timer = (m.bullet_timer + 1) % 100
-   if(m.bullet_timer == 0) add_monster(m.x, m.y, present)
+   if m.bullet_timer == 0 and m.n_presents < 4 then
+    add_monster(m.x, m.y, present)
+    m.n_presents += 1
+   end
   end,
   [4] = function (m) 
    circle_to(m, 512, 256, 0.002, 0.5) 
@@ -1460,12 +1488,11 @@ spawn = {
  update = {
   [1] = function (m) 
    if not m.spawn_timer then
-    printh("spawn init, angle == " .. m.angle)
     m.spawn_timer = 100
    end
 
    m.spawn_timer = (m.spawn_timer + 1) % 100
-   if m.spawn_timer == 0 and #nearby_actors(m, 2) < 50 then
+   if m.spawn_timer == 0 and #nearby_actors(m, 2) < 20 then
     local n = flr(rnd() * 6 + 1)
     local mt = monster_table[n]
     local nm = add_monster(m.x, m.y, mt)
@@ -1476,7 +1503,6 @@ spawn = {
    end
   end,
   [4] = function (m) 
-   printh("spawn sleep")
    try_roost(m) 
   end
  },
@@ -1485,7 +1511,7 @@ spawn = {
   local nx = m.x - screen_x
   local ny = m.y - screen_y
 
-  spr(spawn.roost[(m.angle * 4 + 2) % 4 + 1], nx, ny)
+  spr(spawn.roost[(m.angle - 0.5) * 4 + 1], nx, ny)
  end,
 }
 
@@ -1571,8 +1597,8 @@ function add_monster(x, y, mt)
  local m = add_actor(x, y)
 
  m.mt = mt
- m.r = 3
- if(mt.radius) m.r = mt.radius
+ m.radius = 3
+ if(mt.radius) m.radius = mt.radius
  m.health = 1
  if(mt.health) m.health = mt.health
  m.monster = true
@@ -1583,6 +1609,7 @@ function add_monster(x, y, mt)
  m.jiggle = 0
  m.blink_timer = 60
  m.sp = m.mt.sprite
+ m.bounce = 0.1
 
  m.update = function (m)
   m.f = (m.f + 0.2) % m.mt.n_sprites
@@ -1593,11 +1620,7 @@ function add_monster(x, y, mt)
 
   max_speed(m, m.mt.max_speed)
 
-  if hit_wall(m, m.dx, m.dy) then
-   if(hit_wall(m, m.dx, 0)) m.dx *= -0.1
-   if(hit_wall(m, 0, m.dy)) m.dy *= -0.1
-  end
-
+  bounce(m)
  end
 
  m.draw = function (m) 
@@ -1768,7 +1791,7 @@ function _update60()
 
   local cx = flr(ship.x / 8)
   local cy = flr(ship.y / 8)
-  local r = 5
+  local r = 8
 
   for y = cy - r, cy + r do
    for x = cx - r, cx + r do
@@ -1874,8 +1897,8 @@ function _draw()
  print(ship.bombs, 32, 1)
  spr(101, 48, 0)
  print(diamonds, 56, 1)
- spr(112, 100, 0)
- print(n_ships, 108, 1)
+ spr(112, 112, 0)
+ print(n_ships, 120, 1)
 
  if(btn(4, 1)) draw_scanner() 
 
