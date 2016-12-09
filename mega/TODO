@@ -1,8 +1,16 @@
+- worm max / min width, #worms good wold gen params
+
+- put theo's new rock textures back
+
+- put world gen params into a table, have a set of them
+
+- tune monster behaviours
+
+- reread code, fix stuff
+
 - crabs walk around edges and wake other monsters
 
   crabs are very light sleepers
-
-- monster spawner cell
 
 - powerups in treasure chests
 
@@ -12,14 +20,8 @@
 
 	* see whole map on scanner
 
-	* three-way bullets
-
 	* faster shield recovery
 
 	* booby trap (releases monsters)
 
 - better start screen, more instructions
-
-- exit portal
-
-- scoring?
