@@ -1,8 +1,12 @@
-- worm max / min width, #worms good wold gen params
+- more world gen params
 
-- put theo's new rock textures back
+  map draw palette
 
-- put world gen params into a table, have a set of them
+  monster draw pallette, health goes up
+
+- down to reverse in asteroids mode
+
+- invulnerability for 1 sec after spawn
 
 - tune monster behaviours
 

@@ -1,5 +1,5 @@
 pico-8 cartridge // http://www.pico-8.com
-version 10
+version 8
 __lua__
 -- mega-roids
 -- jcupitt
@@ -68,13 +68,17 @@ function spiral_explosion(x, y)
 end
 
 function reanimate_circle(x, y)
- for n = 1, 50 do
-  local a = n / 50
-  local px = x + 50 * cos(a)
-  local py = y + 50 * sin(a)
+ for n = 1, 40 do
+  local a = n / 40
+  local dx = 5 * cos(a + 0.2)
+  local dy = 5 * sin(a + 0.2)
+  local px = x + 50 * cos(a) - 35 * dx
+  local py = y + 50 * sin(a) - 35 * dy
   local p = add_particle(px, py)
+  p.dx = dx
+  p.dy = dy
 
-  p.life = 60
+  p.life = 30
   p.dc = 1
   p.c = #particle_cmap * rnd()
   p.size = 3
@@ -82,15 +86,15 @@ function reanimate_circle(x, y)
 end
 
 function reanimate_in(x, y)
- for n = 1, 50 do
-  local a = n / 50
+ for n = 1, 40 do
+  local a = n / 40
   local px = x + 50 * cos(a)
   local py = y + 50 * sin(a)
   local p = add_particle(px, py)
 
   p.dx = 0.1 * cos(a + 0.5)
   p.dy = 0.1 * sin(a + 0.5)
-  p.life = 40
+  p.life = 50
   p.dc = 1
   p.c = #particle_cmap * rnd()
   p.size = 3
@@ -196,7 +200,7 @@ function worm(x, y, a)
   circle(nx, ny, r, 0)
 
   r += rnd() - 0.5
-  r = max(min(r, 5), 1.5)
+  r = max(min(r, world.max_diameter), 1.5)
   a += (rnd() - 0.5) / 10
   nx += cos(a)
   ny += sin(a)
@@ -274,25 +278,6 @@ end
 
 -- {bits, {{prob, value}, {prob, value}, ...}},
 
-edge_probs = {
- [0] = {{1, 30}},
-       {{0.2, 6}, {1, 29}},
-       {{1, 26}},
-       {{0.2, 47}, {1, 21}},
-       {{0.2, 27}, {1, 45}},
-       {{1, 31}},
-       {{0.2, 42}, {0.2, 12}, {1, 20}},
-       {{1, 25}},
-       {{0.2, 44}, {1, 28}},
-       {{0.2, 15}, {1, 18}},
-       {{1, 32}},
-       {{0.4, 43}, {1, 22}},
-       {{1, 19}},
-       {{1, 23}},
-       {{0.2, 46}, {1, 24}},
-       {{0.05, 14}, {0.05, 16}, {0.05, 10}, {1, 17}}
-}
-
 function fix_tiles(tiles, x1, y1, x2, y2, decorate)
  local n = 0
 
@@ -317,6 +302,10 @@ function fix_tiles(tiles, x1, y1, x2, y2, decorate)
       end
      else
       v = p[#p][2]
+     end
+
+     if world.edge_substitute and world.edge_substitute[v] then
+      v = world.edge_substitute[v]
      end
 
      mset(x, y, v)
@@ -377,7 +366,7 @@ function grow_veg(growth_rate)
  end
 end
 
-function generate_world(object_table)
+function generate_world()
  for y = 0, 63 do
   for x = 0, 127 do
    local dx = 64 - x
@@ -391,7 +380,7 @@ function generate_world(object_table)
   end
  end
 
- for i = 1, 20 do
+ for i = 1, world.n_worms do
   local a = rnd()
   local d = rnd()
   local sx = 64 + d * 50 * cos(a)
@@ -413,16 +402,16 @@ function generate_world(object_table)
 
   object_probs[b] = {}
 
-  for j = 1, #object_table do 
-   local ot = object_table[j]
+  for j = 1, #world.monsters do 
+   local ot = world.monsters[j]
 
    add(object_probs[b], {ot[1], ot[2].roost[i]})
   end
  end
 
  fix_tiles(object_probs, 0, 0, 127, 63, true)
- fix_tiles(edge_probs, 0, 0, 127, 63, true)
- for i = 1, 5 do grow_veg(128 * 64) end
+ fix_tiles(world.edge_probs, 0, 0, 127, 63, true)
+ for i = 1, 3 do grow_veg(128 * 64) end
 end
 
 -- start actors
@@ -645,7 +634,7 @@ function bounce(a)
    end
   end
 
-  -- we know the x movement is OK, use that and just change y
+  -- we know the x movement is ok, use that and just change y
   if hit_wall(a, a.dx, a.dy) then
    local ndy = -a.bounce * a.dy
 
@@ -710,8 +699,8 @@ function open_chest()
 
  if(powerdown_timer > 0) powerdown_callback()
 
- powerup_message = chest[1]
- powerup_message_timer = 100
+ message = chest[1]
+ message_timer = 100
  powerdown_timer = chest[2]
  chest[3]()
  powerdown_callback = chest[4]
@@ -879,12 +868,12 @@ function add_portal(x, y)
  p.update = function (p) 
   if closer(p, ship, 10) then
    if diamonds >= 10 then
-    powerup_message = "you warp to the next level!!"
+    message = "you warp to the next level!!"
    else
-    powerup_message = "collect 10 diamonds to open"
+    message = "collect 10 diamonds to open"
    end
 
-   powerup_message_timer = 100
+   message_timer = 100
   end
  end
 
@@ -892,16 +881,18 @@ function add_portal(x, y)
   local nx = p.x - screen_x - 8
   local ny = p.y - screen_y - 8
 
-  spr(104, nx - 4, ny - 4, 1, 1, false, false)
-  spr(104, nx + 4, ny - 4, 1, 1, true, false)
-  spr(104, nx - 4, ny + 4, 1, 1, false, true)
-  spr(104, nx + 4, ny + 4, 1, 1, true, true)
+  spr(104, nx + 4, ny + 4, 1, 1, false, false)
+  spr(104, nx + 12, ny + 4, 1, 1, true, false)
+  spr(104, nx + 4, ny + 12, 1, 1, false, true)
+  spr(104, nx + 12, ny + 12, 1, 1, true, true)
  end
 
  return p
 end
 
 function hit_ship()
+ if(not alive) return
+
  explosion(ship.x + 4, ship.y + 4, 100)
  sfx(8)
 
@@ -919,10 +910,10 @@ function update_reanimate()
  if(reanimate_timer == 0) return
  reanimate_timer = max(0, reanimate_timer - 1)
 
- if reanimate_timer == 99 then
-  reanimate_circle(ship.x, ship.y)
+ if reanimate_timer == 69 then
+  reanimate_circle(ship.x + 3, ship.y + 3)
  elseif reanimate_timer == 40 then
-  reanimate_in(ship.x, ship.y)
+  reanimate_in(ship.x + 3, ship.y + 3)
  elseif reanimate_timer == 0 then
   ship.shields = 3
   alive = true 
@@ -931,7 +922,7 @@ end
 
 function reanimate_ship(ship)
  if(reanimate_timer > 0) return
- reanimate_timer = 100
+ reanimate_timer = 70
 end
 
 function update_bomb(b)
@@ -946,7 +937,7 @@ function update_bomb(b)
   local n
 
   n = circle(cx, cy, r, 0)
-  n += fix_tiles(edge_probs, cx - r, cy - r, cx + r + 1, cy + r + 1, false)
+  n += fix_tiles(world.edge_probs, cx - r, cy - r, cx + r + 1, cy + r + 1, false)
   spiral_explosion(nx, ny)
   sfx(8)
 
@@ -1963,22 +1954,11 @@ function _draw()
 
  if(btn(4, 1)) draw_scanner() 
 
- grow_veg(growth_rate) 
+ grow_veg(world.growth_rate) 
 
- if not alive then
-  color(6)
-  ctext("mega-roids", 30)
-  ctext("")
-  ctext("left/right rotate ship")
-  ctext("up to thrust")
-  ctext("hold z for strafe")
-  ctext("x to fire")
-  ctext("d to release bomb")
- end
-
- powerup_message_timer = max(0, powerup_message_timer - 1)
- if powerup_message_timer > 0 then
-  ctext(powerup_message, 90)
+ message_timer = max(0, message_timer - 1)
+ if message_timer > 0 then
+  ctext(message, 90)
  end
 
  color(5)
@@ -1987,39 +1967,160 @@ end
 
 -- start init
 
-generate_world({
- -- {probability, monster}
- {0.05, octo},
- {0.05, mush},
- {0.05, bat},
- {0.05, crab},
- {0.05, centi},
- {0.05, tree},
- {0.05, spawn},
-})
-build_actor_map()
-add_stars()
+-- all these index with bits 
+
+-- the plain dirt edges
+dirt_edges = {
+ [0] = 30, 29, 26, 21, 45, 31, 20, 25, 28, 18, 32, 22, 19, 23, 24
+}
+
+add_flowers = {
+ [4] = {27},
+ [6] = {42, 12},
+ [8] = {44},
+ [9] = {15},
+ [11] = {43},
+}
+
+add_mushrooms = {
+ [3] = {47},
+ [14] = {46},
+}
+
+-- substitute these for green edges
+swap_green_edges = {
+ [18] = 113,
+ [15] = 123,
+ [19] = 114,
+ [23] = 115,
+ [28] = 116,
+ [44] = 122,
+ [29] = 117,
+ [30] = 118,
+ [31] = 119,
+ [45] = 120,
+ [27] = 121,
+}
+
+-- build a basic edge table ... index with bits, have a table of 
+-- {probability, sprite} for each one
+-- p is diamond probability
+function edge_table(p)
+ local edges
+
+ edges = {}
+ for i = 0, 14 do
+  edges[i] = {{1, dirt_edges[i]}}
+ end
+ edges[15] = {{p, 16}, {0.05, 14}, {0.05, 10}, {1, 17}}
+
+ return edges
+end
+
+-- add a set of edges with a probability
+function add_edges(edges, new, p)
+ for i = 0, 15 do
+  if new[i] then
+   local row
+
+   row = {}
+   for j = 1, #new[i] do 
+    add(row, {p, new[i][j]}) 
+   end
+
+   for j = 1, #edges[i] do 
+    add(row, edges[i][j]) 
+   end
+
+   edges[i] = row
+  end
+ end
+
+ return edges
+end
+
+worlds = {
+ -- world 1
+ {
+  message = "you warp into a strange world!",
+  monsters = {
+   {0.4, crab},
+   {0.05, tree},
+  },
+  growth_rate = 1,
+  n_worms = 5,
+  max_diameter = 2,
+  edge_probs = add_edges(edge_table(0.1), add_flowers, 0.2),
+  edge_substitute = swap_green_edges,
+ },
+
+ -- world 2
+ {
+  message = "welcome to the mushroom kingdom!",
+  monsters = {
+   {0.05, octo},
+   {0.05, mush},
+   {0.05, crab},
+  },
+  growth_rate = 2,
+  n_worms = 20,
+  max_diameter = 5,
+  edge_probs = add_edges(edge_table(0.1), add_mushrooms, 0.3),
+ },
+
+ -- world 3
+ {
+  message = "welcome to the world of flowers!!!",
+  monsters = {
+   {0.05, octo},
+   {0.05, mush},
+   {0.05, bat},
+   {0.05, crab},
+   {0.05, centi},
+   {0.05, tree},
+   {0.05, spawn},
+  },
+
+  growth_rate = 10,
+  n_worms = 20,
+  max_diameter = 5,
+  edge_probs = add_edges(edge_table(0.1), add_flowers, 0.3),
+  edge_substitute = swap_green_edges,
+ },
+
+}
+
+function enter_world(n)
+ world = worlds[n]
+ generate_world()
+ build_actor_map()
+ add_stars()
+ diamonds = 0
+ reset_explored()
+ add_portal(512, 256)
+ ship = add_ship(512, 768)
+ reanimate_timer = 0
+ screen_x = ship.x + 4 - 64
+ screen_y = ship.y + 4 - 64
+ screen_dx = 0
+ screen_dy = 0
+ message = world.message
+ message_timer = 200
+ powerdown_timer = 0
+
+ alive = false
+ dead_timer = 200
+ monster_timer = 100
+end
 
 -- game state
 
-reset_explored()
 diamonds = 0
 n_ships = 1
-add_portal(512, 256)
-ship = add_ship(512, 768)
-dead_timer = 200
-reanimate_timer = 0
-alive = false
-screen_x = ship.x + 4 - 64
-screen_y = ship.y + 4 - 64
-screen_dx = 0
-screen_dy = 0
-monster_timer = 100
-powerup_message_timer = 0
-powerdown_timer = 0
-growth_rate = 10
 
 music(37)
+enter_world(1)
+
 __gfx__
 0000000003333330033333300333333003333330033333300660000003330000000255500000000044444444000000004444446004a44a404444444400388300
 0000000033333333333333333333333333333333333333336446006633133030202212250006d00044245444000000004444aa0004a44a404444042400888866
@@ -2077,14 +2178,14 @@ __gfx__
 033303000088888000888880008888800088888000065000000650000007500009aaaaae030000000000300088878887677878760ee0eeed00e00e00deee0ee0
 0303000000cc8cc000cc8cc000cc8cc000cc8cc00000000000000000000000009aaaaae83000000000000330088887800677776000000eed00e00e00dee00000
 0300000000cc8cc000cc8cc000cc8cc000cc8cc00000000000000000000000009aaaae8830000000000000030088880000666600000000ed00000000de000000
-00070000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00070000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00707000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00707000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-07000700000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-07000700000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+000700000333000003b000000000000033000b300b33000003b30b300000000003b333300b3303300ee000bb0038830000000000000000000000000000000000
+0007000033b333333333b000b33b000b33b3333333333003333333333b30000333333b3333b33b33e99e3b3b0088883b00000000000000000000000000000000
+0070700033333b3bb333330033333033033333b333b3b33bb333b33b333b333bb33b333b3333333be99e33b00881188300000000000000000000000000000000
+00707000033b333333b3333033b33b330b33b330b333333303b43330333333b33442443031b33b300ee3b3303885188b00000000000000000000000000000000
+070007000b33333333343b3033333333034443b00334433303342330b33343331444443044442dd003333b300388883300000000000000000000000000000000
+07000700033334444444133044433344334443000b4444440344443044444464444444464444d88d3b3443300b3883b300000000000000000000000000000000
+00000000033244444244443044444244b3404330644666666466644666444606666664466666d88d334044b00332444400000000000000000000000000000000
+00000000034444444441443044444444034444300660000006000660006660000000066000000dd0034444300344444400000000000000000000000000000000
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
@@ -2149,8 +2250,9 @@ __gfx__
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+
 __gff__
-0002020202030103030001000100010101010101010101010101010101010101010302020202030202020501010105050303030303030302020202040400040403020202020202020203030303020202020202020202020203020202020303030302020202000000000404050503030300000000000000000000000000000000
+0002020202030103030001000100010101010101010101010101010101010101010302020202030202020501010105050303030303030302020202040400040403020202020202020203030303020202020202020202020203020202020303030302020202000000000404050503030300010101010101010101010100000000
 0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 __map__
 1000100000000000000000171700000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
