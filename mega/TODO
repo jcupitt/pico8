@@ -1,12 +1,10 @@
+- warp in effect ... make stars zoom or flash?
+
 - more world gen params
 
   map draw palette
 
   monster draw pallette, health goes up
-
-- down to reverse in asteroids mode
-
-- invulnerability for 1 sec after spawn
 
 - tune monster behaviours
 
@@ -28,4 +26,3 @@
 
 	* booby trap (releases monsters)
 
-- better start screen, more instructions

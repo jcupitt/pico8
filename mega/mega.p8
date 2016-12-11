@@ -8,9 +8,6 @@ __lua__
 
 particles = {}
 
--- don't use all the colours for particles, just the bright ones
-particle_cmap = {[0] = 6, 7, 8, 9, 10, 11, 12, 14, 15}
-
 function add_particle(x, y)
  local p = {}
 
@@ -20,9 +17,8 @@ function add_particle(x, y)
  p.dy = 0
  p.drag = 0
  p.life = 30
- p.dc = 0		-- colour delta
- p.c = 0
- p.size = 0		-- size ... 0 is one pixel across
+ p.c = 8 * rnd()
+ p.size = 0		-- 0 is one pixel across
 
  add(particles, p)
 
@@ -41,8 +37,6 @@ function explosion(x, y, m)
   p.dx = s * sin(a)
   p.dy = s * cos(a)
   p.life = 40 * rnd() + 5
-  p.dc = 1
-  p.c = #particle_cmap * rnd()
   p.size = rnd()
   p.drag = 0.02
  end
@@ -61,8 +55,6 @@ function spiral_explosion(x, y)
   p.dx = s * sin(a)
   p.dy = s * cos(a)
   p.life = 5 * s + 5
-  p.dc = 1
-  p.c = #particle_cmap * rnd()
   p.drag = 0.1
  end
 end
@@ -79,8 +71,6 @@ function reanimate_circle(x, y)
   p.dy = dy
 
   p.life = 30
-  p.dc = 1
-  p.c = #particle_cmap * rnd()
   p.size = 3
  end
 end
@@ -95,8 +85,6 @@ function reanimate_in(x, y)
   p.dx = 0.1 * cos(a + 0.5)
   p.dy = 0.1 * sin(a + 0.5)
   p.life = 50
-  p.dc = 1
-  p.c = #particle_cmap * rnd()
   p.size = 3
   p.drag = -0.1
  end
@@ -112,9 +100,6 @@ function jet(s, a)
  j.dx = sin(a) + s.dx
  j.dy = cos(a) + s.dy
  j.life = 15 * rnd() + 15
- j.dc = 0.5
- j.c = 15 * rnd()
- j.size = 0
  j.drag = 0.04
 end
 
@@ -124,9 +109,6 @@ function spark(m)
  s.dx = m.dx + 0.5 * rnd()
  s.dy = m.dy + 0.5 * rnd()
  s.life = 15 * rnd() + 15
- s.dc = 0.5
- s.c = 15 * rnd()
- s.size = 0
  s.drag = 0.1
 end
 
@@ -135,7 +117,7 @@ function update_particle(p)
  p.dy -= p.dy * p.drag
  p.x += p.dx
  p.y += p.dy
- p.c = (p.c + p.dc) % #particle_cmap
+ p.c = (p.c + 1) % 8
  p.life -= 1
 
  if(p.life < 0) del(particles, p)
@@ -145,7 +127,7 @@ function draw_particle(p)
  local x = p.x - screen_x
  local y = p.y - screen_y
 
- rectfill(x, y, x + p.size, y + p.size, particle_cmap[flr(p.c)])
+ rectfill(x, y, x + p.size, y + p.size, 8 + p.c)
 end
 
 -- star field
@@ -171,15 +153,14 @@ end
 
 -- world building
 
-function circle(cx, cy, r, v)
+function circle(cx, cy, rx, ry, v)
  local n = 0
 
- for y = cy - r, cy + r do
-  for x = cx - r, cx + r do
-   dx = cx - x
-   dy = cy - y 
-   d = sqrt(dx * dx + dy * dy)
-   if d < r then
+ for y = cy - ry, cy + ry do
+  for x = cx - rx, cx + rx do
+   dx = (cx - x) / rx
+   dy = (cy - y) / ry
+   if sqrt(dx * dx + dy * dy) < 1 then
     if(mget(x, y) == 16) n += 1
     mset(x, y, v)
    end
@@ -197,7 +178,7 @@ function worm(x, y, a)
  ny = y
  r = 3
  while true do
-  circle(nx, ny, r, 0)
+  circle(nx, ny, r, r, 0)
 
   r += rnd() - 0.5
   r = max(min(r, world.max_diameter), 1.5)
@@ -223,14 +204,14 @@ function monster(s)
  return fget(s, 1)
 end
 
--- test sprite for plain rock, ie. not a sleeping monster or rocky veg
-function plainrock(s)
- return fget(s, 0) and not fget(s, 1) and not fget(s, 2)
-end
-
 -- test sprite for "growthiness"
 function growth(s)
  return fget(s, 2)
+end
+
+-- test sprite for plain rock, ie. not a sleeping monster or rocky veg
+function plainrock(s)
+ return rocky(s) and not monster(s) and not growth(s)
 end
 
 --[[ bits are laid out as
@@ -278,7 +259,7 @@ end
 
 -- {bits, {{prob, value}, {prob, value}, ...}},
 
-function fix_tiles(tiles, x1, y1, x2, y2, decorate)
+function fix_tiles(tiles, x1, y1, x2, y2)
  local n = 0
 
  for y = y1, y2 do
@@ -290,18 +271,14 @@ function fix_tiles(tiles, x1, y1, x2, y2, decorate)
     local p = tiles[b]
 
     if p then
-     -- count number of diamonds we destroy
-     if(v == 16) n += 1
+     for i = 1, #p do
+      if rnd() < p[i][1] then
+       -- count number of diamonds we destroy
+       if(v == 16) n += 1
 
-     if decorate then
-      for i = 1, #p do
-       if rnd() < p[i][1] then
-        v = p[i][2]
-        break
-       end
+       v = p[i][2]
+       break
       end
-     else
-      v = p[#p][2]
      end
 
      if world.edge_substitute and world.edge_substitute[v] then
@@ -317,7 +294,8 @@ function fix_tiles(tiles, x1, y1, x2, y2, decorate)
  return n
 end
 
--- vegetation templates
+-- vegetation growth templates
+-- for each growth point, a table of {probability, direction, new sprite}
 
 vegetation = {
  [42] = {{0.1, 1, 1, 60}, {0.1, 1, 1, 62}, {0.1, 1, 1, 61}},
@@ -367,18 +345,8 @@ function grow_veg(growth_rate)
 end
 
 function generate_world()
- for y = 0, 63 do
-  for x = 0, 127 do
-   local dx = 64 - x
-   local dy = 64 - 2 * y
-
-   if sqrt(dx * dx + dy * dy) < 63 then
-    mset(x, y, 17)
-   else
-    mset(x, y, 0)
-   end
-  end
- end
+ circle(63, 32, 100, 100, 0)
+ circle(63, 32, 63, 32, 17)
 
  for i = 1, world.n_worms do
   local a = rnd()
@@ -389,11 +357,12 @@ function generate_world()
   worm(sx, sy, a)
  end
 
- -- hole in the centre for the portal
- circle(63, 32, 4, 0)
+ -- worm from the centre for the portal
+ circle(63, 32, 4, 4, 0)
+ worm(63, 32, rnd())
 
  -- make monster prob table
- -- for each bits setting, look for monsters which roost at that angle
+ -- for each bits setting, search for monsters which roost at that angle
  local object_probs 
 
  object_probs = {}
@@ -409,9 +378,13 @@ function generate_world()
   end
  end
 
- fix_tiles(object_probs, 0, 0, 127, 63, true)
- fix_tiles(world.edge_probs, 0, 0, 127, 63, true)
- for i = 1, 3 do grow_veg(128 * 64) end
+ fix_tiles(object_probs, 0, 0, 127, 63)
+
+ fix_tiles(world.edge_probs, 0, 0, 127, 63)
+
+ for i = 1, 3 do 
+  grow_veg(128 * 64) 
+ end
 end
 
 -- start actors
@@ -455,46 +428,8 @@ function update_actor_map(a)
  end
 end
 
-function nearby_actors(a, r)
- -- do the divide first or we'll overflow
- local x = flr(actor_map_width * (a.x / 1024))
- local y = flr(actor_map_height * (a.y / 512))
-
- local searched_extras
- local processed 
-
- searched_extras = false
- processed = {}
-
- for i = -r, r do
-  for j = -r, r do
-   local ix = x + i
-   local iy = y + j
-   local m
-
-   if ix >= 0 and ix < actor_map_width and 
-    iy >= 0 and iy < actor_map_height then
-    m = actor_map[iy][ix]
-   elseif not searched_extras then
-    m = actor_map_extras
-    searched_extras = true
-   else
-    m = nil
-   end
-
-   if m then 
-    for i = 1, #m do
-     add(processed, m[i])
-    end
-   end
-  end
- end
-
- return processed
-end
-
--- loop over nearby actors without making a table .. good for searches not 
--- good for nearby table updates
+-- loop over nearby actors .. good for searches, not good for nearby table 
+-- updates, since that will modify the thing we are looping over
 function foreach_nearby_actors(a, r, f)
  -- do the divide first or we'll overflow
  local x = flr(actor_map_width * (a.x / 1024))
@@ -521,10 +456,25 @@ function foreach_nearby_actors(a, r, f)
    end
 
    if m then 
-    foreach(m, f)
+    for k = 1, #m do
+     if(m[k]) f(m[k])
+    end
    end
   end
  end
+end
+
+-- make a table of nearby actors ... we need to do this if we plan to 
+-- modify the nearby table
+function nearby_actors(a, r)
+ local nearby 
+
+ nearby = {}
+ foreach_nearby_actors(a, r, function (m)
+  add(nearby, m)
+ end)
+
+ return nearby
 end
 
 function add_actor(x, y)
@@ -532,15 +482,17 @@ function add_actor(x, y)
 
  a.x = x
  a.y = y
+ a.cx = 0
+ a.cy = 0
  a.dx = 0
  a.dy = 0
  a.ddx = 0
  a.ddy = 0
- a.sp = 1	-- base sprite number
- a.f = 0	-- frame of animation
+ a.sprite = 1	-- base sprite number
+ a.frame = 0	-- frame of animation
  a.radius = 3
- a.bounce = 0.5	-- bounce off walls
- a.drag = 0.02
+ a.bounce = 0.5	-- amount of energy retained in a wall bounce
+ a.drag = 0.02	-- lose this proportion of velocity per frame
 
  -- set false when removed from actor table and being removed from system
  a.alive = true	
@@ -568,6 +520,11 @@ function update_actor(a)
 
  a.x += a.dx
  a.y += a.dy		
+
+ -- the map cell this actor is in
+ a.cx = flr((a.x + 4) / 8)
+ a.cy = flr((a.y + 4) / 8)
+ a.in_map = a.cx >= 0 and a.cx < 128 and a.cy >= 0 and a.cy < 63
 
  -- we have to do this after changing x, since dx/dy are set by update_monster
  -- and update_ship to keep us out of walls and we mustn't change them
@@ -604,10 +561,8 @@ function max_speed(a, s)
  end
 end
 
-function test_map(x, y)
- local v = mget(flr(x / 8), flr(y / 8))
-
- return rocky(v)
+function get_map(x, y)
+ return mget(flr(x / 8), flr(y / 8))
 end
 
 -- will moving actor a by dx/dy hit a wall
@@ -615,10 +570,10 @@ function hit_wall(a, dx, dy)
  local nx = a.x + dx + 4
  local ny = a.y + dy + 4
 
- return test_map(nx - a.radius, ny - a.radius) or
-  test_map(nx + a.radius, ny - a.radius) or
-  test_map(nx - a.radius, ny + a.radius) or
-  test_map(nx + a.radius, ny + a.radius)
+ return rocky(get_map(nx - a.radius, ny - a.radius)) or
+  rocky(get_map(nx + a.radius, ny - a.radius)) or
+  rocky(get_map(nx - a.radius, ny + a.radius)) or
+  rocky(get_map(nx + a.radius, ny + a.radius))
 end
 
 -- test dx/dy and bounce
@@ -718,7 +673,7 @@ function add_bullet(s, a)
  end
  b.x += b.dx
  b.y += b.dy
- b.sp = 11
+ b.sprite = 11
  b.l = 100
  b.radius = 1
  b.bounce = 1
@@ -764,7 +719,7 @@ function add_enemy_bullet(m, t)
 
  b.x += b.dx
  b.y += b.dy
- b.sp = 87
+ b.sprite = 87
  b.l = 100
  b.radius = 1
  b.st = 0
@@ -796,7 +751,7 @@ function add_diamond(x, y)
 
  d.dx = rnd() - 0.5
  d.dy = rnd() - 0.5
- d.sp = 101
+ d.sprite = 101
  d.n_sprite = 3
  d.sparkle = 0
 
@@ -809,7 +764,7 @@ function add_diamond(x, y)
   local sp
 
   d.sparkle = (d.sparkle + 1) % 100
-  sp = d.sp
+  sp = d.sprite
   if(d.sparkle < 18) sp += d.sparkle / 6
 
   spr(sp, d.x - screen_x, d.y - screen_y)
@@ -892,6 +847,7 @@ end
 
 function hit_ship()
  if(not alive) return
+ if(invulnerability > 0) return
 
  explosion(ship.x + 4, ship.y + 4, 100)
  sfx(8)
@@ -906,20 +862,6 @@ function hit_ship()
  end
 end
 
-function update_reanimate()
- if(reanimate_timer == 0) return
- reanimate_timer = max(0, reanimate_timer - 1)
-
- if reanimate_timer == 69 then
-  reanimate_circle(ship.x + 3, ship.y + 3)
- elseif reanimate_timer == 40 then
-  reanimate_in(ship.x + 3, ship.y + 3)
- elseif reanimate_timer == 0 then
-  ship.shields = 3
-  alive = true 
- end
-end
-
 function reanimate_ship(ship)
  if(reanimate_timer > 0) return
  reanimate_timer = 70
@@ -929,16 +871,13 @@ function update_bomb(b)
  b.l-=1
 
  if b.l < 0 or hit_wall(b, b.dx, b.dy) then
-  local nx = b.x + b.dx + 4
-  local ny = b.y + b.dy + 4
-  local cx = flr(nx / 8)
-  local cy = flr(ny / 8)
   local r = 2 + 1.5 * rnd()
+
   local n
 
-  n = circle(cx, cy, r, 0)
-  n += fix_tiles(world.edge_probs, cx - r, cy - r, cx + r + 1, cy + r + 1, false)
-  spiral_explosion(nx, ny)
+  n = circle(b.cx, b.cy, r, r, 0)
+  n += fix_tiles(plain_edges, b.cx - r, b.cy - r, b.cx + r + 1, b.cy + r + 1)
+  spiral_explosion(b.x, b.y)
   sfx(8)
 
   for i = 1, n do
@@ -956,7 +895,7 @@ end
 function add_bomb(x, y)
  local b = add_actor(x, y)
 
- b.sp = 9
+ b.sprite = 9
  b.l = 400
  b.update = update_bomb
 
@@ -968,7 +907,6 @@ function update_ship(s)
  s.ddy = -0.01 * s.dy
 
  if alive then
-
   if btn(4) then
    -- strafe mode
    local t, a
@@ -1000,15 +938,21 @@ function update_ship(s)
    if(btn(1)) s.angle -= 1 / 64
    if(btn(0)) s.angle += 1 / 64
 
-   if btn(2) then 
+   if not s.reverse and btn(3) then
+    s.angle += 0.5
+    s.reverse = true
+   end
+   if not btn(3) then
+    s.reverse = false
+   end
+
+   if btn(2) or s.reverse then 
     s.dx += 0.04 * cos(s.angle) 
     s.dy += 0.04 * sin(s.angle)
     jet(s, 1 - s.angle + 0.25)
     t = 0.03
    end
   end
-
-  max_speed(s, 1)
 
   s.bt = max(0, s.bt - 1)
   if btn(5) and s.bt == 0 then 
@@ -1034,23 +978,45 @@ function update_ship(s)
    if(s.shields < 3) s.shields += 1
   end
 
-  foreach_nearby_actors(ship, 1, function (m)
-   if m.monster and closer(m, ship, 4) then
-    hit_monster(m)
-    hit_ship()
-   end
-  end)
+  -- don't kill monsters while invul, too easy
+  if invulnerability == 0 then
+   foreach_nearby_actors(ship, 1, function (m)
+    if m.monster and closer(m, ship, 4) then
+     hit_monster(m)
+     hit_ship()
+    end
+   end)
+  end
 
-  local cx = flr((s.x + 4) / 8)
-  local cy = flr((s.y + 4) / 8)
-  if mget(cx, cy) == 13 then
-   mset(cx, cy, 0)
+  if mget(s.cx, s.cy) == 13 then
+   mset(s.cx, s.cy, 0)
    open_chest()
   end
 
+ else
+  -- not alive
+  dead_timer = max(0, dead_timer - 1)
+  if dead_timer == 0 then 
+   reanimate_ship()
+  end
  end
 
  bounce(s)
+ max_speed(s, 1)
+
+ invulnerability = max(0, invulnerability - 1)
+ reanimate_timer = max(0, reanimate_timer - 1)
+
+ if reanimate_timer == 69 then
+  reanimate_circle(s.x + 3, s.y + 3)
+ elseif reanimate_timer == 40 then
+  reanimate_in(s.x + 3, s.y + 3)
+ elseif reanimate_timer == 1 then
+  s.shields = 3
+  alive = true 
+  invulnerability = 30
+ end
+
 end
 
 shield_radius = {5, 8, 11, 14, 17}
@@ -1107,6 +1073,7 @@ function add_ship(x, y)
  s.bounce = 0.1
  s.bullet_bounce = false
  s.spread = 0
+ s.reverse = false
 
  return s
 end
@@ -1137,16 +1104,13 @@ roost_x = { 1,  0, -1,  0}
 roost_y = { 0, -1,  0,  1}
 
 function try_roost(m)
- local cx = flr(m.x / 8)
- local cy = flr(m.y / 8)
-
  -- don't try to roost off the map
- if(cx < 0 or cx > 127 or cy < 0 or cy > 63) return
+ if(not m.in_map) return
 
- if mget(cx, cy) == 0 then
+ if mget(m.cx, m.cy) == 0 then
   for i = 1, #m.mt.roost do
-   if plainrock(mget(cx + roost_x[i], cy + roost_y[i])) then
-    mset(cx, cy, m.mt.roost[i])
+   if plainrock(mget(m.cx + roost_x[i], m.cy + roost_y[i])) then
+    mset(m.cx, m.cy, m.mt.roost[i])
     remove_actor(m)
     m.sleeping = true
    end
@@ -1568,16 +1532,13 @@ spawn = {
 
 --[[
 function wall_walk(m)
- m.f = (m.f + 0.1) % 4
+ m.frame = (m.frame + 0.1) % 4
 
  -- init
  if not m.block_x then
-  local cx = flr(m.x / 8)
-  local cy = flr(m.y / 8)
-
   -- on init, .angle points away from the block we are walking along
-  m.block_x = cx + cos(m.angle + 0.5)
-  m.block_y = cy + sin(m.angle + 0.5)
+  m.block_x = m.cx + cos(m.angle + 0.5)
+  m.block_y = m.cy + sin(m.angle + 0.5)
 
   -- edges use the bits convention, so 0 - 3, right/down/left/up
   -- from block_x/_y
@@ -1659,11 +1620,11 @@ function add_monster(x, y, mt)
  m.timer = mt.transition[m.mood][1]
  m.jiggle = 0
  m.blink_timer = 60
- m.sp = m.mt.sprite
+ m.sprite = m.mt.sprite
  m.bounce = 0.1
 
  m.update = function (m)
-  m.f = (m.f + 0.2) % m.mt.n_sprites
+  m.frame = (m.frame + 0.2) % m.mt.n_sprites
 
   transition_monster(m)
 
@@ -1681,7 +1642,7 @@ function add_monster(x, y, mt)
    local nx = m.x - screen_x
    local ny = m.y - screen_y
 
-   spr(m.sp + m.f, nx, ny)
+   spr(m.sprite + m.frame, nx, ny)
    if m.mt.eyes then
     local eye
 
@@ -1792,7 +1753,7 @@ function update_screen()
  tx = ship.x + 4
  ty = ship.y + 4
  damp = 0.2
- if btn(4) then
+ if alive and btn(4) then
   -- displace in strafe mode
   tx += 48 * cos(ship.angle)
   ty += 48 * sin(ship.angle)
@@ -1828,30 +1789,16 @@ function _update60()
  foreach(particles, update_particle)
  update_screen()
 
- if not alive then 
-  dead_timer = max(0, dead_timer - 1)
-  if dead_timer == 0 then 
-   reanimate_ship()
-  end
- end
-
- update_reanimate()
-
  monster_timer = max(0, monster_timer - 1)
  if monster_timer == 0 then
   monster_timer = 100 * rnd()
-
-  local cx = flr(ship.x / 8)
-  local cy = flr(ship.y / 8)
-  local r = 8
-
-  for y = cy - r, cy + r do
-   for x = cx - r, cx + r do
+  for y = ship.cy - 8, ship.cy + 8 do
+   for x = ship.cx - 8, ship.cx + 8 do
     if monster(mget(x, y)) then 
      -- roughly 0 - 1 probability of waking
-     local dx = cx - x
-     local dy = cy - y
-     local p = 1 - sqrt(dx * dx + dy * dy) / r
+     local dx = ship.cx - x
+     local dy = ship.cy - y
+     local p = 1 - sqrt(dx * dx + dy * dy) / 8
 
      shake_monster(x, y, 2 * p)
     end
@@ -1869,7 +1816,7 @@ function draw_actor(a)
  if a.draw then
   a:draw()
  else
-  spr(a.sp + a.f, a.x - screen_x, a.y - screen_y)
+  spr(a.sprite + a.frame, a.x - screen_x, a.y - screen_y)
  end
 end
 
@@ -1889,8 +1836,8 @@ function draw_map()
 end
 
 function draw_scanner()
- local bx = (ship.x / 8) - 64
- local by = (ship.y / 8) - 64
+ local bx = ship.cx - 64
+ local by = ship.cy - 64
 
  for x = 0, 127 do
   for y = 0, 127 do
@@ -1901,8 +1848,7 @@ function draw_scanner()
    local c
 
    v = 0
-   if nx >= 0 and nx < 128 and 
-    ny >= 0 and ny < 64 then
+   if nx >= 0 and nx < 128 and ny >= 0 and ny < 64 then
     if(explored[ny][nx]) v = mget(nx, ny)
    end
 
@@ -1916,7 +1862,7 @@ function draw_scanner()
  end
 
  for i = 1, #actors do
-  pset((actors[i].x / 8) - bx, (actors[i].y / 8) - by, 8)
+  pset(actors[i].cx - bx, actors[i].cy - by, 8)
  end
 
  if(not beacon_timer) beacon_timer = 0
@@ -1934,6 +1880,21 @@ function draw_scanner()
  print("#nearby " .. #nearby_actors(ship, 5), 80, 100)
  print("#acts " .. #actors, 80, 110)
 end
+
+instructions = {
+ "hold left shift for scanner",
+ "fly to the beacon!",
+ "up to thrust",
+ "left/right to rotate ship",
+ "down to reverse",
+ "x to fire",
+ "hold z to strafe",
+ "d to release a bomb",
+ "use bombs to mine for diamonds",
+ "reach the centre",
+ "of the tenth asteroid",
+ "to find your goal!",
+}
 
 function _draw()
  rectfill(0, 0, 127, 127, 0)
@@ -1959,6 +1920,13 @@ function _draw()
  message_timer = max(0, message_timer - 1)
  if message_timer > 0 then
   ctext(message, 90)
+ end
+
+ if dead_timer == 0 and reanimate_timer == 0 and instruction_counter <= #instructions then
+  color(7)
+  ctext(instructions[instruction_counter], 20)
+  instruction_timer = (instruction_timer + 1) % 120
+  if(instruction_timer == 0) instruction_counter += 1
  end
 
  color(5)
@@ -2039,6 +2007,9 @@ function add_edges(edges, new, p)
  return edges
 end
 
+-- used for explosions which musn't leave flowers or grass
+plain_edges = edge_table(0.1)
+
 worlds = {
  -- world 1
  {
@@ -2107,6 +2078,7 @@ function enter_world(n)
  message = world.message
  message_timer = 200
  powerdown_timer = 0
+ invulnerability = 0
 
  alive = false
  dead_timer = 200
@@ -2116,6 +2088,8 @@ end
 -- game state
 
 diamonds = 0
+instruction_counter = 1
+instruction_timer = 0
 n_ships = 1
 
 music(37)
