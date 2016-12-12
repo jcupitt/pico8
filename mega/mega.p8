@@ -281,10 +281,6 @@ function fix_tiles(tiles, x1, y1, x2, y2)
       end
      end
 
-     if world.edge_substitute and world.edge_substitute[v] then
-      v = world.edge_substitute[v]
-     end
-
      mset(x, y, v)
     end
    end
@@ -728,7 +724,7 @@ function add_enemy_bullet(m, t)
   b.l -= 1
   if(b.l < 0) remove_actor(b)
 
-  b.st = (b.st + 1) % 5
+  b.st = (b.st + 1) % 10
   if(b.st == 0) spark(b)
 
   if hit_wall(b, b.dx, b.dy) then
@@ -845,8 +841,13 @@ function add_portal(x, y)
  return p
 end
 
+function reanimate_ship()
+ if(reanimate_timer > 0) return
+ reanimate_timer = 270
+end
+
 function hit_ship()
- if(not alive) return
+ if(reanimate_timer > 0) return
  if(invulnerability > 0) return
 
  explosion(ship.x + 4, ship.y + 4, 100)
@@ -857,14 +858,8 @@ function hit_ship()
   ship.shield_timer = 500
  else
   n_ships += 1
-  alive = false
-  dead_timer = 200
+  reanimate_ship()
  end
-end
-
-function reanimate_ship(ship)
- if(reanimate_timer > 0) return
- reanimate_timer = 70
 end
 
 function update_bomb(b)
@@ -884,7 +879,7 @@ function update_bomb(b)
    add_diamond(b.x, b.y)
   end
 
-  if alive and closer(b, ship, 10) then
+  if reanimate_timer > 0 and closer(b, ship, 10) then
    hit_ship() 
   end
 
@@ -906,7 +901,20 @@ function update_ship(s)
  s.ddx = -0.01 * s.dx
  s.ddy = -0.01 * s.dy
 
- if alive then
+ invulnerability = max(0, invulnerability - 1)
+
+ reanimate_timer = max(0, reanimate_timer - 1)
+
+ if reanimate_timer == 69 then
+  reanimate_circle(s.x + 3, s.y + 3)
+ elseif reanimate_timer == 40 then
+  reanimate_in(s.x + 3, s.y + 3)
+ elseif reanimate_timer == 1 then
+  s.shields = 3
+  invulnerability = 30
+ elseif reanimate_timer == 0 then
+  -- alive
+
   if btn(4) then
    -- strafe mode
    local t, a
@@ -993,36 +1001,16 @@ function update_ship(s)
    open_chest()
   end
 
- else
-  -- not alive
-  dead_timer = max(0, dead_timer - 1)
-  if dead_timer == 0 then 
-   reanimate_ship()
-  end
  end
 
  bounce(s)
  max_speed(s, 1)
-
- invulnerability = max(0, invulnerability - 1)
- reanimate_timer = max(0, reanimate_timer - 1)
-
- if reanimate_timer == 69 then
-  reanimate_circle(s.x + 3, s.y + 3)
- elseif reanimate_timer == 40 then
-  reanimate_in(s.x + 3, s.y + 3)
- elseif reanimate_timer == 1 then
-  s.shields = 3
-  alive = true 
-  invulnerability = 30
- end
-
 end
 
 shield_radius = {5, 8, 11, 14, 17}
 
 function draw_ship(s)
- if alive then
+ if reanimate_timer == 0 then
   local nx = s.x + 4 - screen_x
   local ny = s.y + 4 - screen_y
   local sz = 2
@@ -1206,12 +1194,21 @@ octo = {
  eye_x = 0,
  eye_y = 0,
 
+ level = 1,
  max_speed = 1.05,
+ recolour = {
+  [2] = {3, 11},
+ },
+ health = {
+  [2] = 5,
+ },
 
  transition = {
   [1] = {200, {1, 2}},			
   [2] = {500, {0.5, 1}, {1, 4}},
+  [3] = {500, {0.5, 1}, {1, 2}},
   [4] = {500, {1, 1}},		
+  [5] = {500, {1, 3}},		
  },
 
  update = {
@@ -1223,12 +1220,22 @@ octo = {
    accelerate_to(m, ship.x, ship.y, 0.0002) 
    fire_at(m, ship, 100)
   end,
+  [3] = function (m) accelerate_away(m, ship.x, ship.y, 0.0003) end,
   [4] = function (m) 
    accelerate_to(m, 512, 256, 0.0002) 
    max_speed(m, 0.4)
    try_roost(m) 
+  end,
+  [5] = function (m) accelerate_to(m, ship.x, ship.y, 0.0004) end,
+ },
+
+ hit = function (m)
+  if m.health == 2 and rnd() < 0.5 then
+   set_mood(m, 5)
+  else
+   set_mood(m, 3)
   end
- }
+ end
 }
 
 bat = {
@@ -1427,14 +1434,21 @@ present = {
 
  transition = {
   [1] = {100, {1, 2}},
-  [2] = {10000, {1, 2}},
+  [2] = {200, {1, 3}},
+  [3] = {200, {1, 1}},
  },
 
  update = {
-  [1] = function (m) hover(m) end,
+  [1] = function (m) 
+   hover(m) 
+  end,
   [2] = function (m) 
    accelerate_to(m, ship.x, ship.y, 0.002) 
    fire_at(m, ship, 50)
+  end,
+  [3] = function (m)
+   remove_actor(m)
+   explosion(m.x + 4, m.y + 4, 10)
   end,
  }
 }
@@ -1612,7 +1626,7 @@ function add_monster(x, y, mt)
  m.radius = 3
  if(mt.radius) m.radius = mt.radius
  m.health = 1
- if(mt.health) m.health = mt.health
+ if(mt.health and mt.level and mt.health[mt.level]) m.health = mt.health[mt.level]
  m.monster = true
  m.sleeping = false
  m.angle = 0
@@ -1628,6 +1642,9 @@ function add_monster(x, y, mt)
 
   transition_monster(m)
 
+  -- dead player sends monsters from attack to normal
+  if(m.mood == 2 and reanimate_timer > 0) set_mood(m, 1)
+
   m.mt.update[m.mood](m)
 
   max_speed(m, m.mt.max_speed)
@@ -1636,14 +1653,34 @@ function add_monster(x, y, mt)
  end
 
  m.draw = function (m) 
-  if m.mt.draw then
-   m.mt.draw(m)
+  local mt = m.mt
+  local recolour
+
+  if mt.recolour and mt.level and mt.recolour[mt.level] then 
+   recolour = mt.recolour[mt.level]
+  end
+
+
+  if mt.draw then
+   mt.draw(m)
   else
    local nx = m.x - screen_x
    local ny = m.y - screen_y
 
+   if recolour and not m.morph_timer then
+    m.morph_timer = 60
+   end
+
+   if recolour then
+    m.morph_timer = max(0, m.morph_timer - 1)
+    if(m.morph_timer % 20 < 10) pal(recolour[1], recolour[2])
+   end
+
    spr(m.sprite + m.frame, nx, ny)
-   if m.mt.eyes then
+
+   if(recolour) pal()
+
+   if mt.eyes then
     local eye
 
     m.jiggle = (m.jiggle + 0.2) % 4
@@ -1658,7 +1695,7 @@ function add_monster(x, y, mt)
      if(m.mood == 4) time = 10
      m.blink_timer = time * rnd() + time
     end
-    spr(eye, nx + m.mt.eye_x, ny + m.mt.eye_y + eye_jiggle[flr(m.jiggle)])
+    spr(eye, nx + mt.eye_x, ny + mt.eye_y + eye_jiggle[flr(m.jiggle)])
    end
   end
  end
@@ -1753,7 +1790,7 @@ function update_screen()
  tx = ship.x + 4
  ty = ship.y + 4
  damp = 0.2
- if alive and btn(4) then
+ if reanimate_timer == 0 and btn(4) then
   -- displace in strafe mode
   tx += 48 * cos(ship.angle)
   ty += 48 * sin(ship.angle)
@@ -1882,15 +1919,23 @@ function draw_scanner()
 end
 
 instructions = {
+ "",
+ "",
  "hold left shift for scanner",
  "fly to the beacon!",
+ "",
  "up to thrust",
  "left/right to rotate ship",
  "down to reverse",
- "x to fire",
+ "",
+ "press x to fire",
+ "",
  "hold z to strafe",
- "d to release a bomb",
+ "",
+ "press d to release a bomb",
  "use bombs to mine for diamonds",
+ "shoot enemies to get more bombs",
+ "",
  "reach the centre",
  "of the tenth asteroid",
  "to find your goal!",
@@ -1922,9 +1967,9 @@ function _draw()
   ctext(message, 90)
  end
 
- if dead_timer == 0 and reanimate_timer == 0 and instruction_counter <= #instructions then
+ if reanimate_timer == 0 and instruction_counter <= #instructions then
   color(7)
-  ctext(instructions[instruction_counter], 20)
+  ctext(instructions[instruction_counter], 24)
   instruction_timer = (instruction_timer + 1) % 120
   if(instruction_timer == 0) instruction_counter += 1
  end
@@ -2007,6 +2052,19 @@ function add_edges(edges, new, p)
  return edges
 end
 
+-- substitute a set of edge tiles, eg. to add the grass tiles
+function substitute_edges(edges, substitute)
+ for i = 0, 15 do
+  for j = 1, #edges[i] do 
+   local pair = edges[i][j]
+
+   if(substitute[pair[2]]) pair[2] = substitute[pair[2]]
+  end
+ end
+
+ return edges
+end
+
 -- used for explosions which musn't leave flowers or grass
 plain_edges = edge_table(0.1)
 
@@ -2015,14 +2073,18 @@ worlds = {
  {
   message = "you warp into a strange world!",
   monsters = {
+   {0.5, octo},
    {0.4, crab},
    {0.05, tree},
   },
   growth_rate = 1,
   n_worms = 5,
   max_diameter = 2,
-  edge_probs = add_edges(edge_table(0.1), add_flowers, 0.2),
-  edge_substitute = swap_green_edges,
+  edge_probs = substitute_edges(
+   add_edges(edge_table(0.1), add_flowers, 0.2), swap_green_edges),
+  enter = function ()
+   octo.level = 2
+  end
  },
 
  -- world 2
@@ -2037,6 +2099,8 @@ worlds = {
   n_worms = 20,
   max_diameter = 5,
   edge_probs = add_edges(edge_table(0.1), add_mushrooms, 0.3),
+  enter = function ()
+  end
  },
 
  -- world 3
@@ -2055,14 +2119,17 @@ worlds = {
   growth_rate = 10,
   n_worms = 20,
   max_diameter = 5,
-  edge_probs = add_edges(edge_table(0.1), add_flowers, 0.3),
-  edge_substitute = swap_green_edges,
+  edge_probs = substitute_edges(
+   add_edges(edge_table(0.1), add_flowers, 0.3), swap_green_edges),
+  enter = function ()
+  end
  },
 
 }
 
 function enter_world(n)
  world = worlds[n]
+ world.enter()
  generate_world()
  build_actor_map()
  add_stars()
@@ -2070,7 +2137,6 @@ function enter_world(n)
  reset_explored()
  add_portal(512, 256)
  ship = add_ship(512, 768)
- reanimate_timer = 0
  screen_x = ship.x + 4 - 64
  screen_y = ship.y + 4 - 64
  screen_dx = 0
@@ -2079,10 +2145,8 @@ function enter_world(n)
  message_timer = 200
  powerdown_timer = 0
  invulnerability = 0
-
- alive = false
- dead_timer = 200
  monster_timer = 100
+ reanimate_ship()
 end
 
 -- game state
@@ -2091,6 +2155,15 @@ diamonds = 0
 instruction_counter = 1
 instruction_timer = 0
 n_ships = 1
+reanimate_timer = 0
+
+octo.level = 1
+mush.level = 1
+bat.level = 1
+crab.level = 1
+centi.level = 1
+tree.level = 1
+spawn.level = 1
 
 music(37)
 enter_world(1)

@@ -1,5 +1,18 @@
 - warp in effect ... make stars zoom or flash?
 
+- we make an octo in the map, how do we know whether to wake as a mega-octo?
+
+  mega-ness must be set by add_monster, so all octos are the same, but are made
+  mega on wake if the world says so
+
+  monsters are going to change colour when they wake, sigh
+
+- veg could increase drag
+
+- need to limit present spawning somehow
+
+  make presents kill themselves after 300 frames?
+
 - more world gen params
 
   map draw palette
