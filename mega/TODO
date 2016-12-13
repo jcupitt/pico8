@@ -1,25 +1,21 @@
-- warp in effect ... make stars zoom or flash?
+- warp between worlds effect ... make stars zoom or flash?
 
-- we make an octo in the map, how do we know whether to wake as a mega-octo?
+- monster sleeps, any monster on the same square becomes trapped in rock and
+  can no longer sleep
 
-  mega-ness must be set by add_monster, so all octos are the same, but are made
-  mega on wake if the world says so
+  let monsters pass through sleeping monsters, but not rock
 
-  monsters are going to change colour when they wake, sigh
+- add another mood ... suicide
+
+  vibrates for 0.5s, then goes "pop"
 
 - veg could increase drag
-
-- need to limit present spawning somehow
-
-  make presents kill themselves after 300 frames?
 
 - more world gen params
 
   map draw palette
 
-  monster draw pallette, health goes up
-
-- tune monster behaviours
+- make world gen params randomly
 
 - reread code, fix stuff
 

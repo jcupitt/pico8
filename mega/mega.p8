@@ -26,11 +26,11 @@ function add_particle(x, y)
 end
 
 -- m == magnitude
-function explosion(x, y, m)
+function explosion(actor, m)
  if(#particles > 200) return
 
  for n = 1, m + m * 2 * rnd() do
-  local p = add_particle(x, y)
+  local p = add_particle(actor.x + 4, actor.y + 4)
   local a = rnd()
   local s = rnd() * (2 + 0.05 * m)
 
@@ -42,13 +42,13 @@ function explosion(x, y, m)
  end
 end
 
-function spiral_explosion(x, y)
+function spiral_explosion(actor)
  if(#particles > 200) return
 
  local ba = rnd()
 
  for n = 1, 100 do
-  local p = add_particle(x, y)
+  local p = add_particle(actor.x + 4, actor.y + 4)
   local a = ba + n / 3.1
   local s = n / 15
 
@@ -59,13 +59,13 @@ function spiral_explosion(x, y)
  end
 end
 
-function reanimate_circle(x, y)
+function reanimate_circle(actor)
  for n = 1, 40 do
   local a = n / 40
   local dx = 5 * cos(a + 0.2)
   local dy = 5 * sin(a + 0.2)
-  local px = x + 50 * cos(a) - 35 * dx
-  local py = y + 50 * sin(a) - 35 * dy
+  local px = actor.x + 50 * cos(a) - 35 * dx
+  local py = actor.y + 50 * sin(a) - 35 * dy
   local p = add_particle(px, py)
   p.dx = dx
   p.dy = dy
@@ -75,11 +75,11 @@ function reanimate_circle(x, y)
  end
 end
 
-function reanimate_in(x, y)
+function reanimate_in(actor)
  for n = 1, 40 do
   local a = n / 40
-  local px = x + 50 * cos(a)
-  local py = y + 50 * sin(a)
+  local px = actor.x + 50 * cos(a)
+  local py = actor.y + 50 * sin(a)
   local p = add_particle(px, py)
 
   p.dx = 0.1 * cos(a + 0.5)
@@ -90,24 +90,24 @@ function reanimate_in(x, y)
  end
 end
 
-function jet(s, a)
- s.jt = (s.jt + 1) % 3
- if(s.jt != 0) return
+function jet(actor, a)
+ actor.jet_timer = (actor.jet_timer + 1) % 3
+ if(actor.jet_timer != 0) return
 
- local j = add_particle(s.x + 4, s.y + 4)
+ local j = add_particle(actor.x + 4, actor.y + 4)
 
  a += (rnd() - 0.5) * 0.15
- j.dx = sin(a) + s.dx
- j.dy = cos(a) + s.dy
+ j.dx = sin(a) + actor.dx
+ j.dy = cos(a) + actor.dy
  j.life = 15 * rnd() + 15
  j.drag = 0.04
 end
 
-function spark(m)
- local s = add_particle(m.x + 3, m.y + 3)
+function spark(actor)
+ local s = add_particle(actor.x + 3, actor.y + 3)
 
- s.dx = m.dx + 0.5 * rnd()
- s.dy = m.dy + 0.5 * rnd()
+ s.dx = actor.dx + 0.5 * rnd()
+ s.dy = actor.dy + 0.5 * rnd()
  s.life = 15 * rnd() + 15
  s.drag = 0.1
 end
@@ -181,14 +181,14 @@ function worm(x, y, a)
   circle(nx, ny, r, r, 0)
 
   r += rnd() - 0.5
-  r = max(min(r, world.max_diameter), 1.5)
+  r = max(min(r, world.tunnel_diameter), 1.5)
   a += (rnd() - 0.5) / 10
   nx += cos(a)
   ny += sin(a)
 
-  dx = nx - 64
-  dy = 2 * (ny - 32)
-  if(sqrt(dx * dx + dy * dy) > 64) break
+  dx = (nx - 64) / 64
+  dy = (ny - 32) / 32
+  if(sqrt(dx * dx + dy * dy) > world.diameter) break
  end
 
  mset(x, y, 13)
@@ -342,13 +342,12 @@ end
 
 function generate_world()
  circle(63, 32, 100, 100, 0)
- circle(63, 32, 63, 32, 17)
+ circle(63, 32, 63 * world.diameter, 32 * world.diameter, 17)
 
  for i = 1, world.n_worms do
   local a = rnd()
-  local d = rnd()
-  local sx = 64 + d * 50 * cos(a)
-  local sy = 32 + d * 28 * sin(a)
+  local sx = 64 + world.diameter * 50 * cos(a)
+  local sy = 32 + world.diameter * 28 * sin(a)
 
   worm(sx, sy, a)
  end
@@ -370,7 +369,10 @@ function generate_world()
   for j = 1, #world.monsters do 
    local ot = world.monsters[j]
 
-   add(object_probs[b], {ot[1], ot[2].roost[i]})
+   add(object_probs[b], {ot[1], ot[3].roost[i]})
+
+   -- set monster level for this world
+   ot[3].level = ot[2]
   end
  end
 
@@ -683,7 +685,7 @@ function add_bullet(s, a)
    if b.bullet_bounce then
     bounce(b)
    else
-    explosion(b.x + 4, b.y + 4, 5) 
+    explosion(b, 5) 
     wake_monsters(b.x + 4, b.y + 4)
     remove_actor(b)
    end
@@ -692,7 +694,7 @@ function add_bullet(s, a)
   foreach_nearby_actors(b, 1, function(a)
    if a != b then
     if a.monster and collision(b, a) then
-     explosion(b.x + 4, b.y + 4, 10) 
+     explosion(b, 10) 
      remove_actor(b)
      hit_monster(a)
     end
@@ -728,8 +730,9 @@ function add_enemy_bullet(m, t)
   if(b.st == 0) spark(b)
 
   if hit_wall(b, b.dx, b.dy) then
-   explosion(b.x + 4, b.y + 4, 5) 
-   wake_monsters(b.x + 4, b.y + 4)
+   explosion(b, 5) 
+   -- don't wake other monsters, they keep waking each other up and never sleep
+   -- again
    remove_actor(b)
   end
 
@@ -819,7 +822,8 @@ function add_portal(x, y)
  p.update = function (p) 
   if closer(p, ship, 10) then
    if diamonds >= 10 then
-    message = "you warp to the next level!!"
+    world_number += 1
+    enter_world(world_number)
    else
     message = "collect 10 diamonds to open"
    end
@@ -841,16 +845,15 @@ function add_portal(x, y)
  return p
 end
 
-function reanimate_ship()
- if(reanimate_timer > 0) return
- reanimate_timer = 270
+function alive()
+ return reanimate_timer == 0
 end
 
 function hit_ship()
- if(reanimate_timer > 0) return
+ if(not alive()) return
  if(invulnerability > 0) return
 
- explosion(ship.x + 4, ship.y + 4, 100)
+ explosion(ship, 100)
  sfx(8)
 
  if ship.shields > 0 then
@@ -858,7 +861,7 @@ function hit_ship()
   ship.shield_timer = 500
  else
   n_ships += 1
-  reanimate_ship()
+  reanimate_timer = 270
  end
 end
 
@@ -872,14 +875,14 @@ function update_bomb(b)
 
   n = circle(b.cx, b.cy, r, r, 0)
   n += fix_tiles(plain_edges, b.cx - r, b.cy - r, b.cx + r + 1, b.cy + r + 1)
-  spiral_explosion(b.x, b.y)
+  spiral_explosion(b)
   sfx(8)
 
   for i = 1, n do
    add_diamond(b.x, b.y)
   end
 
-  if reanimate_timer > 0 and closer(b, ship, 10) then
+  if alive() and closer(b, ship, 10) then
    hit_ship() 
   end
 
@@ -906,15 +909,13 @@ function update_ship(s)
  reanimate_timer = max(0, reanimate_timer - 1)
 
  if reanimate_timer == 69 then
-  reanimate_circle(s.x + 3, s.y + 3)
+  reanimate_circle(s)
  elseif reanimate_timer == 40 then
-  reanimate_in(s.x + 3, s.y + 3)
+  reanimate_in(s)
  elseif reanimate_timer == 1 then
   s.shields = 3
   invulnerability = 30
- elseif reanimate_timer == 0 then
-  -- alive
-
+ elseif alive() then
   if btn(4) then
    -- strafe mode
    local t, a
@@ -1010,7 +1011,7 @@ end
 shield_radius = {5, 8, 11, 14, 17}
 
 function draw_ship(s)
- if reanimate_timer == 0 then
+ if alive() then
   local nx = s.x + 4 - screen_x
   local ny = s.y + 4 - screen_y
   local sz = 2
@@ -1051,7 +1052,7 @@ function add_ship(x, y)
  s.bm = 0
  s.update = update_ship
  s.draw = draw_ship
- s.jt = 2
+ s.jet_timer = 2
  s.shields = 3
  s.shield_timer = 0
  s.shield_draw_timer = 0
@@ -1162,11 +1163,6 @@ function follow_to(s, f)
 end
 
 function hover(m)
- -- init
- if not m.hover_timer then
-  m.hover_timer = 0
- end
-
  m.hover_timer = max(0, m.hover_timer - 1)
  if m.hover_timer == 0 then
   m.hover_timer = 60 * rnd() 
@@ -1183,6 +1179,16 @@ end
 	4 sleepy (looks for roost)
 	5 psycho (suicide attack)
 
+     monster characters
+
+	mush		weak, very slow, brave
+	octo		weak, slow, cowardly, can shoot
+	bat		weak, fast, brave
+	crab		strong, slow, brave, no shoot
+	centi		stupid, encircles
+	tree		slow, stupid, spawns presents
+	presents 	fast, stupid, short-lived, can shoot
+
 ]]
 
 octo = {
@@ -1194,27 +1200,26 @@ octo = {
  eye_x = 0,
  eye_y = 0,
 
- level = 1,
- max_speed = 1.05,
+ max_speed = 0.7,
+
  recolour = {
   [2] = {3, 11},
+  [3] = {3, 8},
  },
- health = {
-  [2] = 5,
- },
+ health = {1, 2, 3},
 
  transition = {
-  [1] = {200, {1, 2}},			
-  [2] = {500, {0.5, 1}, {1, 4}},
+  [1] = {200, {1, 2}},
+  [2] = {100, {0.5, 1}, {1, 4}},
   [3] = {500, {0.5, 1}, {1, 2}},
-  [4] = {500, {1, 1}},		
-  [5] = {500, {1, 3}},		
+  [4] = {500, {1, 1}},
+  [5] = {200, {1, 3}},
  },
 
  update = {
   [1] = function (m) 
    hover(m)
-   if(closer(m, ship, 30)) set_mood(m, 2)
+   if(closer(m, ship, 50)) set_mood(m, 2)
   end,
   [2] = function (m) 
    accelerate_to(m, ship.x, ship.y, 0.0002) 
@@ -1248,12 +1253,17 @@ bat = {
  eye_y = 0,
 
  max_speed = 1.05,
- health = 5,
+
+ recolour = {
+  [2] = {9, 8},
+  [3] = {9, 2},
+ },
+ health = {1, 2, 3},
 
  transition = {
-  [1] = {200, {1, 2}},			
+  [1] = {100, {1, 2}},			
   [2] = {500, {0.5, 1}, {1, 4}},
-  [3] = {500, {1, 1}},
+  [3] = {20, {1, 2}},
   [4] = {500, {1, 1}},		
   [5] = {500, {1, 2}},		
  },
@@ -1291,6 +1301,12 @@ segment = {
 
  max_speed = 1000,
 
+ recolour = {
+  [2] = {2, 14},
+  [3] = {2, 6},
+ },
+ health = {1, 2, 5},
+
  transition = {
   [1] = {10000, {1, 1}}
  },
@@ -1312,7 +1328,7 @@ segment = {
     end
    else
     s.l = max(0, s.l - 1)
-    if(s.l == 0) remove_actor(s) explosion(s.x + 4, s.y + 4, 10) 
+    if(s.l == 0) remove_actor(s) explosion(s, 10) 
    end
   end
  }
@@ -1330,6 +1346,12 @@ centi = {
 
  max_speed = 0.5,
 
+ recolour = {
+  [2] = {2, 14},
+  [3] = {2, 6},
+ },
+ health = {1, 2, 5},
+
  transition = {
   [1] = {500, {1, 2}},			
   [2] = {500, {1, 4}},			
@@ -1340,6 +1362,7 @@ centi = {
   for i = 1, 15 do
    local s
 
+   segment.level = c.level
    s = add_monster(c.x, c.y, segment)
    s.following = c
    c = s
@@ -1371,6 +1394,12 @@ mush = {
 
  max_speed = 0.5,
 
+ recolour = {
+  [2] = {8, 12},
+  [3] = {8, 9},
+ },
+ health = {1, 2, 2},
+
  transition = {
   [1] = {200, {1, 2}},
   [2] = {500, {1, 4}},			
@@ -1400,7 +1429,13 @@ crab = {
  eye_x = 0,
  eye_y = 1,
 
- max_speed = 1.05,
+ max_speed = 0.4,
+
+ recolour = {
+  [2] = {8, 10},
+  [3] = {8, 11},
+ },
+ health = {1, 5, 10},
 
  transition = {
   [1] = {200, {1, 2}},
@@ -1413,9 +1448,9 @@ crab = {
    hover(m) 
    if(closer(m, ship, 30)) set_mood(m, 2)
   end,
-  [2] = function (m) accelerate_to(m, ship.x, ship.y, 0.0002) end,
+  [2] = function (m) circle_to(m, ship.x, ship.y, 0.0002, 0.4) end,
   [4] = function (m) 
-   circle_to(m, 512, 256, 0.002, 0.5) 
+   circle_to(m, 512, 256, 0.002, 0.4) 
    try_roost(m) 
   end
  }
@@ -1430,7 +1465,13 @@ present = {
  eye_x = 0,
  eye_y = 1,
 
- max_speed = 0.4,
+ max_speed = 0.8,
+
+ recolour = {
+  [2] = {12, 13},
+  [3] = {12, 14},
+ },
+ health = {1, 2, 3},
 
  transition = {
   [1] = {100, {1, 2}},
@@ -1448,7 +1489,7 @@ present = {
   end,
   [3] = function (m)
    remove_actor(m)
-   explosion(m.x + 4, m.y + 4, 10)
+   explosion(m, 10)
   end,
  }
 }
@@ -1462,6 +1503,12 @@ tree = {
  eyes = false,
 
  max_speed = 0.2,
+
+ recolour = {
+  [2] = {3, 15},
+  [3] = {3, 13},
+ },
+ health = {1, 2, 3},
 
  transition = {
   [1] = {200, {1, 2}},
@@ -1477,15 +1524,9 @@ tree = {
   [2] = function (m) 
    accelerate_to(m, ship.x, ship.y, 0.0002) 
 
-   if not m.present_timer then
-    m.present_timer = 0
-    m.n_presents = 0
-   end
-
    m.present_timer = (m.present_timer + 1) % 100
-   if m.present_timer == 0 and m.n_presents < 4 then
+   if m.present_timer == 0 then
     add_monster(m.x, m.y, present)
-    m.n_presents += 1
    end
   end,
   [4] = function (m) 
@@ -1504,6 +1545,9 @@ spawn = {
  eyes = false,
 
  max_speed = 0,
+
+ recolour = {},
+ health = {1, 1, 1},
 
  transition = {
   [1] = {300, {1, 4}},
@@ -1625,8 +1669,7 @@ function add_monster(x, y, mt)
  m.mt = mt
  m.radius = 3
  if(mt.radius) m.radius = mt.radius
- m.health = 1
- if(mt.health and mt.level and mt.health[mt.level]) m.health = mt.health[mt.level]
+ m.health = mt.health[mt.level]
  m.monster = true
  m.sleeping = false
  m.angle = 0
@@ -1636,6 +1679,9 @@ function add_monster(x, y, mt)
  m.blink_timer = 60
  m.sprite = m.mt.sprite
  m.bounce = 0.1
+ m.hover_timer = 0
+ m.morph_timer = 60
+ m.present_timer = 0
 
  m.update = function (m)
   m.frame = (m.frame + 0.2) % m.mt.n_sprites
@@ -1643,7 +1689,7 @@ function add_monster(x, y, mt)
   transition_monster(m)
 
   -- dead player sends monsters from attack to normal
-  if(m.mood == 2 and reanimate_timer > 0) set_mood(m, 1)
+  if(m.mood == 2 and not alive()) set_mood(m, 1)
 
   m.mt.update[m.mood](m)
 
@@ -1654,22 +1700,13 @@ function add_monster(x, y, mt)
 
  m.draw = function (m) 
   local mt = m.mt
-  local recolour
-
-  if mt.recolour and mt.level and mt.recolour[mt.level] then 
-   recolour = mt.recolour[mt.level]
-  end
-
+  local recolour = mt.recolour[mt.level]
 
   if mt.draw then
    mt.draw(m)
   else
    local nx = m.x - screen_x
    local ny = m.y - screen_y
-
-   if recolour and not m.morph_timer then
-    m.morph_timer = 60
-   end
 
    if recolour then
     m.morph_timer = max(0, m.morph_timer - 1)
@@ -1790,7 +1827,7 @@ function update_screen()
  tx = ship.x + 4
  ty = ship.y + 4
  damp = 0.2
- if reanimate_timer == 0 and btn(4) then
+ if alive() and btn(4) then
   -- displace in strafe mode
   tx += 48 * cos(ship.angle)
   ty += 48 * sin(ship.angle)
@@ -1899,7 +1936,9 @@ function draw_scanner()
  end
 
  for i = 1, #actors do
-  pset(actors[i].cx - bx, actors[i].cy - by, 8)
+  local m = actors[i]
+
+  if(m.monster) pset(m.cx - bx, m.cy - by, 8)
  end
 
  if(not beacon_timer) beacon_timer = 0
@@ -1908,10 +1947,6 @@ function draw_scanner()
 
  pset(64, 64, 7)
  rect(56, 56, 72, 72, 7)
-
- color(15)
- print("diamonds", 0, 110)
- print(diamonds, 0, 120)
 
  color(5)
  print("#nearby " .. #nearby_actors(ship, 5), 80, 100)
@@ -1947,7 +1982,7 @@ function _draw()
  foreach(stars, draw_star)
  draw_map()
  foreach(particles, draw_particle)
- foreach_nearby_actors(ship, 3, draw_actor)
+ foreach_nearby_actors(ship, 4, draw_actor)
  rectfill(3, 3, 4, 4, 7)
  color(6)
  print(ship.power, 8, 1)
@@ -1967,7 +2002,7 @@ function _draw()
   ctext(message, 90)
  end
 
- if reanimate_timer == 0 and instruction_counter <= #instructions then
+ if alive() and instruction_counter <= #instructions then
   color(7)
   ctext(instructions[instruction_counter], 24)
   instruction_timer = (instruction_timer + 1) % 120
@@ -2073,63 +2108,58 @@ worlds = {
  {
   message = "you warp into a strange world!",
   monsters = {
-   {0.5, octo},
-   {0.4, crab},
-   {0.05, tree},
+   {0.5, 2, octo},
+   {0.4, 1, crab},
+   {0.05, 1, tree},
   },
   growth_rate = 1,
   n_worms = 5,
-  max_diameter = 2,
+  tunnel_diameter = 2,
+  diameter = 0.5,
   edge_probs = substitute_edges(
    add_edges(edge_table(0.1), add_flowers, 0.2), swap_green_edges),
-  enter = function ()
-   octo.level = 2
-  end
  },
 
  -- world 2
  {
   message = "welcome to the mushroom kingdom!",
   monsters = {
-   {0.05, octo},
-   {0.05, mush},
-   {0.05, crab},
+   {0.05, 1, octo},
+   {0.05, 1, mush},
+   {0.05, 1, crab},
   },
   growth_rate = 2,
   n_worms = 20,
-  max_diameter = 5,
+  tunnel_diameter = 5,
+  diameter = 0.9,
   edge_probs = add_edges(edge_table(0.1), add_mushrooms, 0.3),
-  enter = function ()
-  end
  },
 
  -- world 3
  {
   message = "welcome to the world of flowers!!!",
   monsters = {
-   {0.05, octo},
-   {0.05, mush},
-   {0.05, bat},
-   {0.05, crab},
-   {0.05, centi},
-   {0.05, tree},
-   {0.05, spawn},
+   {0.05, 1, octo},
+   {0.05, 1, mush},
+   {0.05, 1, bat},
+   {0.05, 1, crab},
+   {0.05, 1, centi},
+   {0.05, 1, tree},
+   {0.05, 1, spawn},
   },
 
   growth_rate = 10,
   n_worms = 20,
-  max_diameter = 5,
+  tunnel_diameter = 5,
+  diameter = 1.0,
   edge_probs = substitute_edges(
    add_edges(edge_table(0.1), add_flowers, 0.3), swap_green_edges),
-  enter = function ()
-  end
  },
 
 }
 
 function enter_world(n)
  world = worlds[n]
- world.enter()
  generate_world()
  build_actor_map()
  add_stars()
@@ -2146,27 +2176,19 @@ function enter_world(n)
  powerdown_timer = 0
  invulnerability = 0
  monster_timer = 100
- reanimate_ship()
+ reanimate_timer = 300
 end
 
 -- game state
 
 diamonds = 0
+n_ships = 1
 instruction_counter = 1
 instruction_timer = 0
-n_ships = 1
-reanimate_timer = 0
-
-octo.level = 1
-mush.level = 1
-bat.level = 1
-crab.level = 1
-centi.level = 1
-tree.level = 1
-spawn.level = 1
+world_number = 1
 
 music(37)
-enter_world(1)
+enter_world(world_number)
 
 __gfx__
 0000000003333330033333300333333003333330033333300660000003330000000255500000000044444444000000004444446004a44a404444444400388300
