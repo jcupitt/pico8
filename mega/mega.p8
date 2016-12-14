@@ -6,8 +6,6 @@ __lua__
 
 -- particle system
 
-particles = {}
-
 function add_particle(x, y)
  local p = {}
 
@@ -124,15 +122,13 @@ function update_particle(p)
 end
 
 function draw_particle(p)
- local x = p.x - screen_x
- local y = p.y - screen_y
+ local x = p.x + p.size / 2 - screen_x
+ local y = p.y + p.size / 2 - screen_y
 
  rectfill(x, y, x + p.size, y + p.size, 8 + p.c)
 end
 
 -- star field
-stars = {}
-
 function draw_star(s)
  local x = (s.x - screen_x * 0.5) % 128
  local y = (s.y - screen_y * 0.5) % 128
@@ -141,6 +137,8 @@ function draw_star(s)
 end
 
 function add_stars()
+ stars = {}
+
  for i = 1, 20 do
   local s = {}
 
@@ -378,7 +376,11 @@ function generate_world()
 
  fix_tiles(object_probs, 0, 0, 127, 63)
 
- fix_tiles(world.edge_probs, 0, 0, 127, 63)
+ local edge_probs = edge_table(world.diamonds)
+ add_edges(edge_probs, add_flowers, world.flower_prob)
+ add_edges(edge_probs, add_mushrooms, world.mushroom_prob)
+ if(world.grass) substitute_edges(edge_probs, swap_green_edges)
+ fix_tiles(edge_probs, 0, 0, 127, 63)
 
  for i = 1, 3 do 
   grow_veg(128 * 64) 
@@ -387,15 +389,11 @@ end
 
 -- start actors
 
-actors = {}
-
 -- the actor map 
 
 -- have 32 across, so 1024 / 32 == 32 pixels 
 -- square for each actor map cell
 
-actor_map = {}
-actor_map_extras = {}
 actor_map_width = 32
 actor_map_height = 16
 
@@ -426,8 +424,17 @@ function update_actor_map(a)
  end
 end
 
--- loop over nearby actors .. good for searches, not good for nearby table 
--- updates, since that will modify the thing we are looping over
+--[[ 
+
+loop over nearby actors .. good for searches, not good for nearby table 
+updates, since that will modify the thing we are looping over
+
+we do the nearest first and work out in a series of rings ... this way, we can
+stop once a certain amount of cpu time has been used, and only update the most
+important actors
+
+]]
+
 function foreach_nearby_actors(a, r, f)
  -- do the divide first or we'll overflow
  local x = flr(actor_map_width * (a.x / 1024))
@@ -437,28 +444,38 @@ function foreach_nearby_actors(a, r, f)
 
  searched_extras = false
 
- for i = -r, r do
-  for j = -r, r do
-   local ix = x + i
-   local iy = y + j
-   local m
+ local do_cell = function (ix, iy)
+  local m
 
-   if ix >= 0 and ix < actor_map_width and 
-    iy >= 0 and iy < actor_map_height then
-    m = actor_map[iy][ix]
-   elseif not searched_extras then
-    m = actor_map_extras
-    searched_extras = true
-   else
-    m = nil
-   end
+  if ix >= 0 and ix < actor_map_width and 
+   iy >= 0 and iy < actor_map_height then
+   m = actor_map[iy][ix]
+  elseif not searched_extras then
+   m = actor_map_extras
+   searched_extras = true
+  else
+   m = nil
+  end
 
-   if m then 
-    for k = 1, #m do
-     if(m[k]) f(m[k])
-    end
+  if m then 
+   for k = 1, #m do
+    if(m[k]) f(m[k])
    end
   end
+ end
+
+ -- radius 0 is a special case, since top/bottom/left/right overlap
+ do_cell(x, y)
+
+ for radius = 1, r do
+  -- top edge
+  for i = -radius, radius do do_cell(x + i, y - radius) end
+  -- bottom edge
+  for i = -radius, radius do do_cell(x + i, y + radius) end
+  -- left edge
+  for i = -radius + 1, radius - 1 do do_cell(x - radius, y + i) end
+  -- right edge
+  for i = -radius + 1, radius - 1 do do_cell(x + radius, y + i) end
  end
 end
 
@@ -510,11 +527,14 @@ function remove_actor(a)
   if(a.actor_map) del(a.actor_map, a) a.actor_map = nil
   del(actors, a)
   a.alive = false
+
+  -- make sure segments don't keep refs to other actors around
+  a.following = nil
  end
 end
 
 function update_actor(a)
- if(a.alive) a:update()
+ if(a.alive and a.update) a:update()
 
  a.x += a.dx
  a.y += a.dy		
@@ -530,7 +550,7 @@ function update_actor(a)
  a.dy += a.ddy
 end
 
-function closer(a, b, d)
+function distance(a, b)
  -- numbers in pico8 are 16.16 bit fixed point, so we can't square 
  -- anything bigger than sqrt(32767), about 170
 
@@ -538,16 +558,11 @@ function closer(a, b, d)
  -- this will give us enough range for this game
  local dx = (a.x - b.x) / 1000
  local dy = (a.y - b.y) / 1000
-
- -- we want (1000 * sqrt(dx * dx + dy * dy) < d)
- -- divide by 1000 and square both sides to remove the sqrt
- d /= 1000
-
- return dx * dx + dy * dy < d * d
+ return 1000 * sqrt(dx * dx + dy * dy)
 end
 
 function collision(a, b)
- return closer(a, b, a.radius + b.radius)
+ return distance(a, b) < a.radius + b.radius
 end
 
 -- limit actor's max speed ... scale the unit vector
@@ -568,10 +583,15 @@ function hit_wall(a, dx, dy)
  local nx = a.x + dx + 4
  local ny = a.y + dy + 4
 
- return rocky(get_map(nx - a.radius, ny - a.radius)) or
-  rocky(get_map(nx + a.radius, ny - a.radius)) or
-  rocky(get_map(nx - a.radius, ny + a.radius)) or
-  rocky(get_map(nx + a.radius, ny + a.radius))
+ -- monsters can pass through sleeping monsters ... otherwise, when a monster
+ -- roosts, all monsters around it will become trapped
+ local tester = rocky
+ if(a.monster) tester = plainrock
+
+ return tester(get_map(nx - a.radius, ny - a.radius)) or
+  tester(get_map(nx + a.radius, ny - a.radius)) or
+  tester(get_map(nx - a.radius, ny + a.radius)) or
+  tester(get_map(nx + a.radius, ny + a.radius))
 end
 
 -- test dx/dy and bounce
@@ -605,12 +625,12 @@ chests = {
   "fast reload powerup!!",
   500,
   function () ship.reload_time = 5 end,
-  function () ship.reload_time = 20 end,
+  function () ship.reload_time = 10 end,
  },
  {
   "bomb bonus powerup!!",
   0,
-  function () ship.bombs += 10 end,
+  function () bombs += 10 end,
   function () end,
  },
  {
@@ -685,7 +705,7 @@ function add_bullet(s, a)
    if b.bullet_bounce then
     bounce(b)
    else
-    explosion(b, 5) 
+    explosion(b, 2) 
     wake_monsters(b.x + 4, b.y + 4)
     remove_actor(b)
    end
@@ -730,13 +750,13 @@ function add_enemy_bullet(m, t)
   if(b.st == 0) spark(b)
 
   if hit_wall(b, b.dx, b.dy) then
-   explosion(b, 5) 
+   explosion(b, 1) 
    -- don't wake other monsters, they keep waking each other up and never sleep
    -- again
    remove_actor(b)
   end
 
-  if closer(b, ship, 4) then
+  if distance(b, ship) < 4 then
    hit_ship()
    remove_actor(b)
   end
@@ -756,7 +776,7 @@ function add_diamond(x, y)
 
  d.update = function (d)
   bounce(d)
-  if(closer(d, ship, 5)) diamonds += 1 remove_actor(d)
+  if(distance(d, ship) < 5) diamonds += 1 remove_actor(d)
  end
 
  d.draw = function (d)
@@ -796,11 +816,11 @@ function add_power(x, y)
 
   max_speed(p, 1)
 
-  if closer(p, ship, 4) then
+  if distance(p, ship) < 4 then
    ship.power += 1 
    if ship.power > 9 then
     ship.power = 0
-    ship.bombs += 1
+    bombs += 1
    end
    remove_actor(p)
   end
@@ -816,21 +836,13 @@ function add_power(x, y)
  return p
 end
 
+function next_level()
+ world_number += 1
+ enter_world(world_number)
+end
+
 function add_portal(x, y)
  local p = add_actor(x, y)
-
- p.update = function (p) 
-  if closer(p, ship, 10) then
-   if diamonds >= 10 then
-    world_number += 1
-    enter_world(world_number)
-   else
-    message = "collect 10 diamonds to open"
-   end
-
-   message_timer = 100
-  end
- end
 
  p.draw = function (p) 
   local nx = p.x - screen_x - 8
@@ -882,7 +894,7 @@ function update_bomb(b)
    add_diamond(b.x, b.y)
   end
 
-  if alive() and closer(b, ship, 10) then
+  if alive() and distance(b, ship) < 10 then
    hit_ship() 
   end
 
@@ -973,11 +985,11 @@ function update_ship(s)
   end
 
   s.bm = max(0, s.bm - 1)
-  if btn(3, 1) and s.bm == 0 and s.bombs > 0 then 
+  if btn(3, 1) and s.bm == 0 and bombs > 0 then 
    local b = add_bomb(s.x, s.y)
    b.dx += s.dx
    b.dy += s.dy
-   s.bombs -= 1
+   bombs -= 1
    s.bm = 40
   end
 
@@ -990,7 +1002,7 @@ function update_ship(s)
   -- don't kill monsters while invul, too easy
   if invulnerability == 0 then
    foreach_nearby_actors(ship, 1, function (m)
-    if m.monster and closer(m, ship, 4) then
+    if m.monster and m.distance < 4 then
      hit_monster(m)
      hit_ship()
     end
@@ -1056,9 +1068,8 @@ function add_ship(x, y)
  s.shields = 3
  s.shield_timer = 0
  s.shield_draw_timer = 0
- s.bombs = 3
  s.power = 0
- s.reload_time = 20
+ s.reload_time = 10
  s.bounce = 0.1
  s.bullet_bounce = false
  s.spread = 0
@@ -1162,10 +1173,10 @@ function follow_to(s, f)
  return not (s.read == s.write)
 end
 
-function hover(m)
+function hover(m, l)
  m.hover_timer = max(0, m.hover_timer - 1)
  if m.hover_timer == 0 then
-  m.hover_timer = 60 * rnd() 
+  m.hover_timer = l * rnd() 
   m.dx = 0.5 * (rnd() - 0.5)
   m.dy = 0.5 * (rnd() - 0.5)
  end
@@ -1178,6 +1189,9 @@ end
 	3 scared (runs away)
 	4 sleepy (looks for roost)
 	5 psycho (suicide attack)
+	6 sits and vibrates 
+	7 death (explodes, removed)
+	8 attacks in a circle
 
      monster characters
 
@@ -1192,6 +1206,7 @@ end
 ]]
 
 octo = {
+ name = "octo", 
  roost = {7, 49, 50, 5},
  sprite = 1,
  n_sprites = 4,
@@ -1209,8 +1224,8 @@ octo = {
  health = {1, 2, 3},
 
  transition = {
-  [1] = {200, {1, 2}},
-  [2] = {100, {0.5, 1}, {1, 4}},
+  [1] = {200, {0.5, 4}, {1, 2}},
+  [2] = {100, {0.5, 3}, {1, 1}},
   [3] = {500, {0.5, 1}, {1, 2}},
   [4] = {500, {1, 1}},
   [5] = {200, {1, 3}},
@@ -1218,8 +1233,8 @@ octo = {
 
  update = {
   [1] = function (m) 
-   hover(m)
-   if(closer(m, ship, 50)) set_mood(m, 2)
+   hover(m, 60)
+   if(m.distance < 50) set_mood(m, 2)
   end,
   [2] = function (m) 
    accelerate_to(m, ship.x, ship.y, 0.0002) 
@@ -1244,6 +1259,7 @@ octo = {
 }
 
 bat = {
+ name = "bat", 
  roost = {48, 51, 52, 33},
  sprite = 34,
  n_sprites = 4,
@@ -1261,8 +1277,8 @@ bat = {
  health = {1, 2, 3},
 
  transition = {
-  [1] = {100, {1, 2}},			
-  [2] = {500, {0.5, 1}, {1, 4}},
+  [1] = {100, {0.5, 4}, {1, 2}},			
+  [2] = {300, {1, 1}},
   [3] = {20, {1, 2}},
   [4] = {500, {1, 1}},		
   [5] = {500, {1, 2}},		
@@ -1270,8 +1286,8 @@ bat = {
 
  update = {
   [1] = function (m)
-   hover(m)
-   if(closer(m, ship, 30)) set_mood(m, 2)
+   hover(m, 60)
+   if(m.distance < 30) set_mood(m, 2)
   end,
   [2] = function (m) accelerate_to(m, ship.x, ship.y, 0.0002) end,
   [3] = function (m) accelerate_away(m, ship.x, ship.y, 0.0003) end,
@@ -1305,7 +1321,7 @@ segment = {
   [2] = {2, 14},
   [3] = {2, 6},
  },
- health = {1, 2, 5},
+ health = {1, 1, 1},
 
  transition = {
   [1] = {10000, {1, 1}}
@@ -1322,9 +1338,8 @@ segment = {
       remove_actor(s)
      else
       s.l = 50
+      s.following = nil
      end
-  
-     s.following = nil
     end
    else
     s.l = max(0, s.l - 1)
@@ -1335,6 +1350,8 @@ segment = {
 }
 
 centi = {
+ name = "centi", 
+
  -- if rock to right, down left, up
  roost = {8, 53, 54, 38},
  sprite = 39,
@@ -1362,7 +1379,7 @@ centi = {
   for i = 1, 15 do
    local s
 
-   segment.level = c.level
+   segment.level = c.mt.level
    s = add_monster(c.x, c.y, segment)
    s.following = c
    c = s
@@ -1372,7 +1389,7 @@ centi = {
  update = {
   [1] = function (m) 
    circle_to(m, 512, 256, 0.002, 0.5)
-   if(closer(m, ship, 30)) set_mood(m, 2)
+   if(m.distance < 30) set_mood(m, 2)
   end,
   [2] = function (m) circle_to(m, ship.x, ship.y, 0.002, 0.5) end,
   [4] = function (m) 
@@ -1383,6 +1400,8 @@ centi = {
 }
 
 mush = {
+ name = "mushroom", 
+
  -- if rock to right, down left, up
  roost = {64, 64, 64, 64},
  sprite = 55,
@@ -1401,15 +1420,15 @@ mush = {
  health = {1, 2, 2},
 
  transition = {
-  [1] = {200, {1, 2}},
-  [2] = {500, {1, 4}},			
+  [1] = {200, {0.5, 4}, {1, 2}},
+  [2] = {500, {1, 1}},			
   [4] = {500, {1, 1}}
  },
 
  update = {
   [1] = function (m) 
-   hover(m)
-   if(closer(m, ship, 30)) set_mood(m, 2)
+   hover(m, 60)
+   if(m.distance < 30) set_mood(m, 2)
   end,
   [2] = function (m) accelerate_to(m, ship.x, ship.y, 0.0002) end,
   [4] = function (m) 
@@ -1420,6 +1439,8 @@ mush = {
 }
 
 crab = {
+ name = "crab",
+
  -- if rock to right, down left, up
  roost = {74, 75, 76, 73},
  sprite = 69,
@@ -1445,8 +1466,8 @@ crab = {
 
  update = {
   [1] = function (m) 
-   hover(m) 
-   if(closer(m, ship, 30)) set_mood(m, 2)
+   hover(m, 60) 
+   if(m.distance < 30) set_mood(m, 2)
   end,
   [2] = function (m) circle_to(m, ship.x, ship.y, 0.0002, 0.4) end,
   [4] = function (m) 
@@ -1475,19 +1496,23 @@ present = {
 
  transition = {
   [1] = {100, {1, 2}},
-  [2] = {200, {1, 3}},
-  [3] = {200, {1, 1}},
+  [2] = {200, {1, 6}},
+  [6] = {60, {1, 7}},
+  [7] = {30, {1, 1}},
  },
 
  update = {
   [1] = function (m) 
-   hover(m) 
+   hover(m, 60) 
   end,
   [2] = function (m) 
    accelerate_to(m, ship.x, ship.y, 0.002) 
    fire_at(m, ship, 50)
   end,
-  [3] = function (m)
+  [6] = function (m)
+   hover(m, 5) 
+  end,
+  [7] = function (m)
    remove_actor(m)
    explosion(m, 10)
   end,
@@ -1495,6 +1520,8 @@ present = {
 }
 
 tree = {
+ name = "tree",
+
  -- if rock to right, down left, up
  roost = {94, 95, 96, 93},
  sprite = 89,
@@ -1518,14 +1545,15 @@ tree = {
 
  update = {
   [1] = function (m) 
-   hover(m) 
-   if(closer(m, ship, 50)) set_mood(m, 2)
+   hover(m, 60) 
+   if(m.distance < 50) set_mood(m, 2)
   end,
   [2] = function (m) 
    accelerate_to(m, ship.x, ship.y, 0.0002) 
 
    m.present_timer = (m.present_timer + 1) % 100
    if m.present_timer == 0 then
+    present.level = tree.level
     add_monster(m.x, m.y, present)
    end
   end,
@@ -1537,6 +1565,8 @@ tree = {
 }
 
 spawn = {
+ name = "spawn",
+
  -- if rock to right, down, left, up
  roost = {109, 110, 111, 88},
  sprite = 88,
@@ -1558,21 +1588,19 @@ spawn = {
   [1] = function (m) 
    if not m.spawn_timer then
     m.spawn_timer = 100
-    m.n_monsters = 0
    end
 
    m.spawn_timer = (m.spawn_timer + 1) % 100
-   if m.spawn_timer == 0 and m.n_monsters < 5 then
-    -- 5 means we don't spwan spwans or trees
+   if m.spawn_timer == 0 and #nearby_actors(m, 3) < 10 then
+    -- 5 means we don't spawn spawns or trees
     local n = flr(rnd() * 5 + 1)
     local mt = monster_table[n]
+    mt.level = spawn.level
     local nm = add_monster(m.x, m.y, mt)
 
     nm.angle = m.angle
     nm.dx = 3 * cos(nm.angle)
     nm.dy = 3 * sin(nm.angle)
-
-    m.n_monsters += 1
    end
   end,
   [4] = function (m) 
@@ -1590,8 +1618,6 @@ spawn = {
 
 --[[
 function wall_walk(m)
- m.frame = (m.frame + 0.1) % 4
-
  -- init
  if not m.block_x then
   -- on init, .angle points away from the block we are walking along
@@ -1619,16 +1645,6 @@ function wall_walk(m)
  m.offset += m.direction
 end
 ]]
-
-monster_table = {
- octo,
- bat,
- centi,
- mush,
- crab,
- tree,
- spawn,
-}
 
 function set_mood(m, i)
  if m.mood != i then
@@ -1661,7 +1677,7 @@ eye_jiggle = {[0] = 0, 1, 0, -1}
 
 -- eye sprites, index with mood
 -- for sleepy (4), normal plus high blink
-eye_sprites = {77, 79, 80, 77, 81}
+eye_sprites = {77, 79, 80, 77, 81, 78, 77, 79}
 
 function add_monster(x, y, mt)
  local m = add_actor(x, y)
@@ -1682,8 +1698,12 @@ function add_monster(x, y, mt)
  m.hover_timer = 0
  m.morph_timer = 60
  m.present_timer = 0
+ m.distance = 100
 
  m.update = function (m)
+  -- we need ship-monster distance in many places, so calc once here and reuse
+  m.distance = distance(m, ship)
+
   m.frame = (m.frame + 0.2) % m.mt.n_sprites
 
   transition_monster(m)
@@ -1853,12 +1873,27 @@ end
 
 function _update60()
  local nearby
+ local limit
 
  nearby = nearby_actors(ship, 5)
- foreach(nearby, update_actor)
- foreach(nearby, function (a)
-  if(a.alive) update_actor_map(a)
- end)
+
+ local before = stat(1)
+
+ limit = #nearby
+ for i = 1, #nearby do
+  update_actor(nearby[i])
+
+  -- stop when we've burned 40% of cpu ... nearby_actors() generates the table
+  -- ordered by distance from the player
+  if stat(1) - before > 0.4 then
+   limit = i
+   break
+  end
+ end
+
+ for i = 1, limit do
+  if(nearby[i].alive) update_actor_map(nearby[i])
+ end
 
  foreach(particles, update_particle)
  update_screen()
@@ -1882,6 +1917,20 @@ function _update60()
 
  powerdown_timer = max(0, powerdown_timer - 1)
  if(powerdown_timer == 1) powerdown_callback()
+
+ if btn(5, 1) then
+  next_level()
+ end
+
+ if distance(portal, ship) < 10 then
+  if diamonds >= 10 then
+   next_level()
+  else
+   message = "collect 10 diamonds to open"
+   message_timer = 100
+  end
+ end
+
 end
 
 -- start draw
@@ -1948,9 +1997,9 @@ function draw_scanner()
  pset(64, 64, 7)
  rect(56, 56, 72, 72, 7)
 
- color(5)
- print("#nearby " .. #nearby_actors(ship, 5), 80, 100)
- print("#acts " .. #actors, 80, 110)
+ --color(5)
+ --print("#nearby " .. #nearby_actors(ship, 5), 80, 100)
+ --print("#acts " .. #actors, 80, 110)
 end
 
 instructions = {
@@ -1980,14 +2029,18 @@ function _draw()
  rectfill(0, 0, 127, 127, 0)
 
  foreach(stars, draw_star)
+
  draw_map()
+
  foreach(particles, draw_particle)
+
  foreach_nearby_actors(ship, 4, draw_actor)
+
  rectfill(3, 3, 4, 4, 7)
  color(6)
  print(ship.power, 8, 1)
  spr(9, 24, 0)
- print(ship.bombs, 32, 1)
+ print(bombs, 32, 1)
  spr(101, 48, 0)
  print(diamonds, 56, 1)
  spr(112, 112, 0)
@@ -2009,8 +2062,8 @@ function _draw()
   if(instruction_timer == 0) instruction_counter += 1
  end
 
- color(5)
- print("cpu " .. flr((stat(1) * 100)) .. "%", 80, 120)
+ --color(5)
+ --print("cpu " .. flr((stat(1) * 100)) .. "%", 80, 120)
 end
 
 -- start init
@@ -2103,70 +2156,108 @@ end
 -- used for explosions which musn't leave flowers or grass
 plain_edges = edge_table(0.1)
 
-worlds = {
- -- world 1
- {
-  message = "you warp into a strange world!",
-  monsters = {
-   {0.5, 2, octo},
-   {0.4, 1, crab},
-   {0.05, 1, tree},
-  },
-  growth_rate = 1,
-  n_worms = 5,
-  tunnel_diameter = 2,
-  diameter = 0.5,
-  edge_probs = substitute_edges(
-   add_edges(edge_table(0.1), add_flowers, 0.2), swap_green_edges),
- },
-
- -- world 2
- {
-  message = "welcome to the mushroom kingdom!",
-  monsters = {
-   {0.05, 1, octo},
-   {0.05, 1, mush},
-   {0.05, 1, crab},
-  },
-  growth_rate = 2,
-  n_worms = 20,
-  tunnel_diameter = 5,
-  diameter = 0.9,
-  edge_probs = add_edges(edge_table(0.1), add_mushrooms, 0.3),
- },
-
- -- world 3
- {
-  message = "welcome to the world of flowers!!!",
-  monsters = {
-   {0.05, 1, octo},
-   {0.05, 1, mush},
-   {0.05, 1, bat},
-   {0.05, 1, crab},
-   {0.05, 1, centi},
-   {0.05, 1, tree},
-   {0.05, 1, spawn},
-  },
-
-  growth_rate = 10,
-  n_worms = 20,
-  tunnel_diameter = 5,
-  diameter = 1.0,
-  edge_probs = substitute_edges(
-   add_edges(edge_table(0.1), add_flowers, 0.3), swap_green_edges),
- },
-
+monster_table = {
+ octo,
+ bat,
+ centi,
+ mush,
+ crab,
+ tree,
+ spawn,
 }
 
+function level(n)
+ return 1 + max(0, min(2, flr(3 * rnd() * n / 10)))
+end
+
+label_start = {
+ "you warp into",
+ "welcome to",
+ "you arrive at",
+ "look out for",
+}
+
+label_dest = {
+ "kingdom",
+ "domain",
+ "world",
+ "empire",
+ "planet",
+ "habitat",
+}
+
+function world_params(n)
+ local p = n / 10
+ local main = 1 + flr(rnd() * #monster_table)
+
+ world = {}
+
+ world.message = label_start[1 + flr(rnd() * #label_start)] .. " " .. 
+  monster_table[main].name .. " " .. 
+  label_dest[1 + flr(rnd() * #label_dest)] .. "!"
+
+ world.monsters = {}
+
+ local l = level(n)
+ add(world.monsters, {0.2, l, monster_table[main]})
+
+ for i = 1, #monster_table do
+  if rnd() < p + i / 20 then
+   local l = level(n)
+   add(world.monsters, {0.05 + rnd() * p / 3, l, monster_table[i]})
+  end
+ end
+
+ world.growth_rate = 1 + 20 * rnd()
+
+ world.n_worms = 5 + 10 * rnd()
+
+ world.diameter = 0.2 + rnd() * 0.8
+
+ world.tunnel_diameter = 1 + 5 * rnd()
+
+ world.diamonds = 0.05 + rnd() / 3
+
+ world.flower_prob = rnd()
+
+ world.mushroom_prob = rnd()
+
+ world.grass = rnd() < 0.5
+
+ printh("world params:")
+ printh(world.message)
+ for i = 1, #world.monsters do
+  printh("{" .. world.monsters[i][1] .. ", " .. world.monsters[i][2] .. ", " .. world.monsters[i][3].name .. "}")
+ end
+ printh("growth_rate = " .. world.growth_rate)
+ printh("n_worms = " .. world.n_worms)
+ printh("diameter = " .. world.diameter)
+ printh("tunnel_diameter = " .. world.tunnel_diameter)
+ printh("diamonds = " .. world.diamonds)
+ printh("flower_prob = " .. world.flower_prob)
+ printh("mushroom_prob = " .. world.mushroom_prob)
+ if(world.grass) printh("grass")
+
+end
+
 function enter_world(n)
- world = worlds[n]
+ -- actors ref map cells, map cells ref actors, we have to break the links
+ -- before we reset
+ rectfill(0, 0, 127, 127, 0)
+ foreach(actors, remove_actor)
+ actors = {}
+ actor_map = {}
+ actor_map_extras = {}
+ particles = {}
+ world_params(n)
+ ctext(world.message, 90)
  generate_world()
  build_actor_map()
  add_stars()
+ ship = add_ship(512, 768)
  diamonds = 0
  reset_explored()
- add_portal(512, 256)
- ship = add_ship(512, 768)
+ portal = add_portal(512, 256)
  screen_x = ship.x + 4 - 64
  screen_y = ship.y + 4 - 64
  screen_dx = 0
@@ -2181,8 +2272,10 @@ end
 
 -- game state
 
+actors = {}
 diamonds = 0
 n_ships = 1
+bombs = 3
 instruction_counter = 1
 instruction_timer = 0
 world_number = 1
@@ -2225,8 +2318,8 @@ __gfx__
 00990aaa03333330000033300090009000000000020000200555200000000000000000000000000000777700bbbb00000000bbbb030000003000000000000003
 00888800008800080088000000080000008800000a0000a000a00a000000000000a00a0000000000000088088000000880880000000000000000000001000010
 08888880aa0080800a00808800a080000a0080880aa00aa00aa00aa0000000000aa00aa00000000000001aa00aa44aa00aa10000000000000000000000100100
-811881180a088400aa08840000a88488aa08840080000008800000080aa00aa08000000800000000000814a08a4888a80a819000077007700110011000000000
-88888888000888400008884000088840000888408099880880998808809988088099880800998800000888408118811804889000071001700000000007000070
+811881180a088400aa08840000a88488aa08840080000008800000080aa00aa08000000800000000000814a08a4888a80a819000077007700000000000000000
+88888888000888400008884000088840000888408099880880998808809988088099880800998800000888408118811804889000071001700110011007000070
 88888888000988400009884000098840000988400988888009888880098888800988888081188118000988400088990004888000000000000000000007100170
 788788870a098800aa09880000a98888aa098800008884000088840000888400008884008a8884a8000918a0000000000a418000000000000000000000000000
 08788780aa0090800a00908800a090000a009088080440800804408000844800080440800aa44aa000001aa0000000000aa10000000000000000000000000000

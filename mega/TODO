@@ -1,21 +1,16 @@
+- seeing some tile errors on mushrooms
+
+- powerups should last longer
+
 - warp between worlds effect ... make stars zoom or flash?
 
-- monster sleeps, any monster on the same square becomes trapped in rock and
-  can no longer sleep
-
-  let monsters pass through sleeping monsters, but not rock
-
-- add another mood ... suicide
-
-  vibrates for 0.5s, then goes "pop"
+- display level number
 
 - veg could increase drag
 
 - more world gen params
 
   map draw palette
-
-- make world gen params randomly
 
 - reread code, fix stuff
 
