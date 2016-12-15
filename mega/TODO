@@ -1,16 +1,12 @@
+- we have a lot of repetitive monster code
+
+  have the same update code for all monsters, just change some params
+
 - seeing some tile errors on mushrooms
 
-- powerups should last longer
-
-- warp between worlds effect ... make stars zoom or flash?
-
-- display level number
+- enter portal, it vanishes, world continues for 60 frames, then black
 
 - veg could increase drag
-
-- more world gen params
-
-  map draw palette
 
 - reread code, fix stuff
 
