@@ -1,10 +1,97 @@
-- worm max / min width, #worms good wold gen params
+- we have a lot of repetitive monster code
 
-- put theo's new rock textures back
+  have the same update code for all monsters, just change some params
 
-- put world gen params into a table, have a set of them
+  mood	action
 
-- tune monster behaviours
+  1	hover mt.hover_rate
+  	if distance to ship < mt.eyesight then mood 2
+
+  2	accelerate_to ship mt.attack_accel
+  	if(mt.can_shoot) shoot
+
+  3	accelerate_away mt.scared_accel
+
+  4	accelerate_to centre mt.sleepy_accel
+  	max_speed mt.sleepy_speed
+  	try_roost
+
+  5	accelerate_to ship mt.kamikaze_accel
+
+  6	hover mt.shake_rate
+
+  7	explode
+
+  8	circle_to ship, mt.turn_rate, mt.speed
+  	if(mt.can_shoot) shoot
+
+  9	circle_to centre mt.turn_rate, mt.speed
+  	max_speed mt.sleepy_speed
+  	try_roost
+
+  10	circle_to center mt.turn_rate, mt.speed
+  	if distance to ship < mt.eyesight then mood 2
+
+--[[ bits are laid out as
+
+      2
+    4 x 1
+      8
+
+ so values are
+
+ 0     isolated block
+ 1     finger pointing left
+ 2     finger pointing down
+ 3     corner pointing down and left
+ 4     finger pointing right
+ 5     horizontal line
+ 6     corner pointing down and right
+ 7     bottom edge
+ 8     finger pointing up
+ 9     corner pointing up and left
+ 10    vertical line
+ 11    left edge
+ 12    corner pointing up and right
+ 13    top edge
+ 14    right edge
+ 15    centre block
+
+]]
+
+- debug code for world params
+
+--[[
+ printh("")
+ printh("world params:")
+ printh("level = " .. n)
+ printh(world.message)
+ for i = 1, #world.monsters do
+  printh("{" .. world.monsters[i][1] .. ", " .. world.monsters[i][2] .. ", " .. world.monsters[i][3].name .. "}")
+ end
+ printh("growth_rate = " .. world.growth_rate)
+ printh("n_worms = " .. world.n_worms)
+ printh("diameter = " .. world.diameter)
+ printh("tunnel_diameter = " .. world.tunnel_diameter)
+ printh("diamonds = " .. world.diamonds)
+ printh("flower_prob = " .. world.flower_prob)
+ printh("mushroom_prob = " .. world.mushroom_prob)
+ if(world.grass) printh("grass")
+]]
+
+
+- powerups should be more gradual, should accumulate, should not time out, but
+  should vanish when you die
+
+  maybe bounce and rate should time out, but spread should accumulate?
+
+  cap spread at 3 way?
+
+- seeing some tile errors on mushrooms
+
+- enter portal, it vanishes, world continues for 60 frames, then black
+
+- veg could increase drag
 
 - reread code, fix stuff
 
@@ -24,4 +111,3 @@
 
 	* booby trap (releases monsters)
 
-- better start screen, more instructions
