@@ -1,36 +1,34 @@
-- we have a lot of repetitive monster code
+- reread code, minimise more
 
-  have the same update code for all monsters, just change some params
+- level needs to be property of monster, not mt
 
-  mood	action
+  we can have a level with level 3 octos, but level 1 spawners
 
-  1	hover mt.hover_rate
-  	if distance to ship < mt.eyesight then mood 2
+  the spawner will make level 1 octos, but we don't want to set .level in mt,
+  or that'll stop our l3 octos 
 
-  2	accelerate_to ship mt.attack_accel
-  	if(mt.can_shoot) shoot
+- seeing some tile errors on mushrooms
 
-  3	accelerate_away mt.scared_accel
+- enter portal, it vanishes, world continues for 60 frames, then black
 
-  4	accelerate_to centre mt.sleepy_accel
-  	max_speed mt.sleepy_speed
-  	try_roost
+- veg could increase drag
 
-  5	accelerate_to ship mt.kamikaze_accel
+- crabs walk around edges and wake other monsters
 
-  6	hover mt.shake_rate
+  crabs are very light sleepers
 
-  7	explode
+- powerups in treasure chests
 
-  8	circle_to ship, mt.turn_rate, mt.speed
-  	if(mt.can_shoot) shoot
+	* see monsters on scanner
 
-  9	circle_to centre mt.turn_rate, mt.speed
-  	max_speed mt.sleepy_speed
-  	try_roost
+	* higher top speed
 
-  10	circle_to center mt.turn_rate, mt.speed
-  	if distance to ship < mt.eyesight then mood 2
+	* see whole map on scanner
+
+	* faster shield recovery
+
+	* booby trap (releases monsters)
+
 
 --[[ bits are laid out as
 
@@ -78,36 +76,4 @@
  printh("mushroom_prob = " .. world.mushroom_prob)
  if(world.grass) printh("grass")
 ]]
-
-
-- powerups should be more gradual, should accumulate, should not time out, but
-  should vanish when you die
-
-  maybe bounce and rate should time out, but spread should accumulate?
-
-  cap spread at 3 way?
-
-- seeing some tile errors on mushrooms
-
-- enter portal, it vanishes, world continues for 60 frames, then black
-
-- veg could increase drag
-
-- reread code, fix stuff
-
-- crabs walk around edges and wake other monsters
-
-  crabs are very light sleepers
-
-- powerups in treasure chests
-
-	* see monsters on scanner
-
-	* higher top speed
-
-	* see whole map on scanner
-
-	* faster shield recovery
-
-	* booby trap (releases monsters)
 

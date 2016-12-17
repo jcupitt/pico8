@@ -198,14 +198,14 @@ function worm(x, y, a)
   circle(nx, ny, r, r, 0)
 
   r += rnd() - 0.5
-  r = max(min(r, world.tunnel_diameter), 1.5)
+  r = max(min(r, tunnel_diameter), 1.5)
   a += (rnd() - 0.5) / 10
   nx += cos(a)
   ny += sin(a)
 
   dx = (nx - 64) / 64
   dy = (ny - 32) / 32
-  if(sqrt(dx * dx + dy * dy) > world.diameter) break
+  if(sqrt(dx * dx + dy * dy) > world_diameter) break
  end
 
  mset(x, y, 13)
@@ -296,14 +296,14 @@ vegetation = {
   {0.1, -1, 0, 108}, {0.1, 0, -1, 108}},
 }
 
--- do growth_rate cells on each call
-function grow_veg(growth_rate)
+-- do rate cells on each call
+function grow_veg(rate)
  if not current_x then
   current_x = 0
   current_y = 0
  end
 
- for i = 1, growth_rate do
+ for i = 1, rate do
   current_x = (current_x + 1) % 127
   if(current_x == 0) current_y = (current_y + 1) % 63
 
@@ -327,14 +327,20 @@ function grow_veg(growth_rate)
  end
 end
 
-function generate_world()
- circle(63, 32, 100, 100, 0)
- circle(63, 32, 63 * world.diameter, 32 * world.diameter, 17)
+function generate_world(n)
+ local tunnel_depth = rnd()
 
- for i = 1, world.n_worms do
+ n_worms = 5 + 10 * rnd()
+ world_diameter = min(1, 0.1 + (n_worms - 5) / 10 + rnd() * 0.8)
+ tunnel_diameter = 1 + 5 * rnd()
+
+ circle(63, 32, 100, 100, 0)
+ circle(63, 32, 63 * world_diameter, 32 * world_diameter, 17)
+
+ for i = 1, n_worms do
   local a = rnd()
-  local sx = 64 + world.tunnel_depth * rnd() * world.diameter * 50 * cos(a)
-  local sy = 32 + world.tunnel_depth * rnd() * world.diameter * 28 * sin(a)
+  local sx = 64 + tunnel_depth * rnd() * world_diameter * 50 * cos(a)
+  local sy = 32 + tunnel_depth * rnd() * world_diameter * 28 * sin(a)
 
   worm(sx, sy, a)
  end
@@ -356,22 +362,40 @@ function generate_world()
 
   object_probs[b] = {}
 
-  for j = 1, #world.monsters do 
-   local ot = world.monsters[j]
+  for j = 1, max_monster do 
+   local m
+   local p
 
-   add(object_probs[b], {ot[1], ot[3].roost[i]})
+   if j == 1 then
+    m = main_monster
+    p = 0.2
+   else
+    m = j
+    p = 0
+    if(rnd() < n / 10) p = 0.05 + (n / 10) * rnd() / 3
+   end
+
+   add(object_probs[b], {p, monster_table[m].roost[i]})
 
    -- set monster level for this world
-   ot[3].level = ot[2]
+   monster_table[m].level = flr(max(1, min(3, 3 * (rnd() - 0.5) + n - j)))
   end
  end
 
  fix_tiles(object_probs, 0, 0, 127, 63)
 
- local edge_probs = edge_table(world.diamonds)
- add_edges(edge_probs, add_flowers, world.flower_prob)
- add_edges(edge_probs, add_mushrooms, world.mushroom_prob)
- if(world.grass) substitute_edges(edge_probs, swap_green_edges)
+ local edge_probs = edge_table(0.1 + rnd() / 10)
+
+ p = 0
+ if(rnd() < 0.4) p = rnd() / 4
+ add_edges(edge_probs, add_flowers, p)
+
+ p = 0
+ if(rnd() < 0.4) p = rnd() / 4
+ add_edges(edge_probs, add_mushrooms, p)
+
+ if(rnd() < 0.5) substitute_edges(edge_probs, swap_green_edges)
+
  fix_tiles(edge_probs, 0, 0, 127, 63)
 
  for i = 1, 3 do 
@@ -647,8 +671,7 @@ function open_chest()
 
  if(powerdown_timer > 0 and powerdown_callback) powerdown_callback()
 
- message = chest[1]
- message_timer = 100
+ set_message(chest[1])
  powerdown_timer = 1500
  chest[2]()
  powerdown_callback = chest[3]
@@ -1710,16 +1733,6 @@ function wake_monsters(x, y)
  end
 end
 
-function reset_explored()
- explored = {}
- for y = 0, 63 do
-   explored[y] = {}
-  for x = 0, 127 do
-   explored[y][x] = false
-  end
- end
-end
-
 function mark_explored(x, y)
  local cx = flr(x / 8)
  local cy = flr(y / 8)
@@ -1836,11 +1849,11 @@ function _update60()
   if diamonds >= 10 then
    next_level()
   else
-   message = "collect 10 diamonds to open"
-   message_timer = 100
+   set_message("collect 10 diamonds to open")
   end
  end
 
+ grow_veg(growth_rate) 
 end
 
 -- start draw
@@ -1859,13 +1872,26 @@ function ctext(s, y)
  ty += 8
 end
 
+function set_message(message, timeout)
+ bottom_message = message
+ message_timer = 100
+ if(timeout) message_timer = timeout
+end
+
+function draw_message()
+ message_timer = max(0, message_timer - 1)
+ if message_timer > 0 then
+  ctext(bottom_message, 90)
+ end
+end
+
 function draw_map()
  local cx = flr(screen_x / 8)
  local cy = flr(screen_y / 8)
  local x = screen_x % 8
  local y = screen_y % 8
 
- pal(4, world.mapc)
+ pal(4, world_mapc)
  map(cx, cy, -x, -y, 17, 17)
  pal()
 end
@@ -1937,13 +1963,14 @@ instructions = {
 function _draw()
  rectfill(0, 0, 127, 127, 0)
 
- foreach(stars, draw_star)
-
- draw_map()
-
- foreach(particles, draw_particle)
-
- foreach_nearby_actors(ship, 4, draw_actor)
+ if btn(4, 1) then
+  draw_scanner() 
+ else
+  foreach(stars, draw_star)
+  draw_map()
+  foreach(particles, draw_particle)
+  foreach_nearby_actors(ship, 4, draw_actor)
+ end
 
  rectfill(3, 3, 4, 4, 7)
  color(6)
@@ -1955,14 +1982,7 @@ function _draw()
  spr(112, 112, 0)
  print(n_ships, 120, 1)
 
- if(btn(4, 1)) draw_scanner() 
-
- grow_veg(world.growth_rate) 
-
- message_timer = max(0, message_timer - 1)
- if message_timer > 0 then
-  ctext(message, 90)
- end
+ draw_message()
 
  if alive() and instruction_counter <= #instructions then
   color(7)
@@ -2094,83 +2114,52 @@ label_dest = {
  "habitat",
 }
 
-function world_params(n)
- local p = n / 10
- local max_monster = min(n + 1, #monster_table)
- local main = 1 + flr(rnd() * max_monster)
-
- world = {}
-
- world.message = label_start[1 + flr(rnd() * #label_start)] .. " " .. 
-  monster_table[main].name .. " " .. 
-  label_dest[1 + flr(rnd() * #label_dest)] .. "!"
-
- world.monsters = {}
-
- add(world.monsters, {0.2, max(1, min(3, n - main)), monster_table[main]})
-
- for i = 1, max_monster do
-  if rnd() < p then
-   local l = flr(max(1, min(3, 3 * (rnd() - 0.5) + n - i)))
-   add(world.monsters, {0.05 + rnd() * p / 3, l, monster_table[i]})
-  end
- end
-
- world.growth_rate = 20 * rnd()
-
- world.n_worms = 5 + 10 * rnd()
-
- world.diameter = min(1, 0.1 + (world.n_worms - 5) / 10 + rnd() * 0.8)
-
- world.tunnel_diameter = 1 + 5 * rnd()
- world.tunnel_depth = rnd()
-
- world.diamonds = 0.1 + rnd() / 10
-
- world.flower_prob = 0
- if(rnd() < 0.4) world.flower_prob = rnd() / 4
-
- world.mushroom_prob = 0
- if(rnd() < 0.4) world.mushroom_prob = rnd() / 4
-
- world.grass = rnd() < 0.5
-
- world.mapc = 1 + 14 * rnd()
-end
-
 function enter_world(n)
+ rectfill(0, 0, 127, 127, 0)
  -- actors ref map cells, map cells ref actors, we have to break the links
  -- before we reset
  foreach(actors, remove_actor)
  actor_map = {}
  actor_map_extras = {}
  particles = {}
- world_params(n)
- rectfill(0, 0, 127, 127, 0)
+
+ max_monster = min(n + 1, #monster_table)
+ main_monster = 1 + flr(rnd() * max_monster)
  color(6)
  ctext("world " .. n, 30)
- ctext(world.message, 90)
- generate_world()
+ set_message(label_start[1 + flr(rnd() * #label_start)] .. " " .. 
+  monster_table[main_monster].name .. " " .. 
+  label_dest[1 + flr(rnd() * #label_dest)] .. "!")
+ ctext(bottom_message, 90)
+ generate_world(n)
  build_actor_map()
  add_stars()
  local a = rnd()
  ship = add_ship(512 + 600 * cos(a), 256 + 600 * sin(a))
  ship.angle = a + 0.5
  diamonds = 0
- reset_explored()
+
+ explored = {}
+ for y = 0, 63 do
+   explored[y] = {}
+  for x = 0, 127 do
+   explored[y][x] = false
+  end
+ end
+
  portal = add_portal(512, 256)
  screen_x = ship.x + 4 - 64
  screen_y = ship.y + 4 - 64
  screen_dx = 0
  screen_dy = 0
- message = world.message
- message_timer = 200
  powerdown_timer = 0
  invulnerability = 0
  monster_timer = 100
  reanimate_timer = 300
  beacon_timer = 0
  explore_timer = 0
+ growth_rate = 20 * rnd()
+ world_mapc = 1 + 14 * rnd()
 end
 
 -- game state
