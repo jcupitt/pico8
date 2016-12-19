@@ -1,36 +1,26 @@
-- we have a lot of repetitive monster code
+- use a random erosion of some sort to make the edges of planets more
+  interesting
 
-  have the same update code for all monsters, just change some params
+- make level change other monster params
 
-  mood	action
+- veg could increase drag
 
-  1	hover mt.hover_rate
-  	if distance to ship < mt.eyesight then mood 2
+- crabs walk around edges and wake other monsters
 
-  2	accelerate_to ship mt.attack_accel
-  	if(mt.can_shoot) shoot
+  crabs are very light sleepers
 
-  3	accelerate_away mt.scared_accel
+- powerups in treasure chests
 
-  4	accelerate_to centre mt.sleepy_accel
-  	max_speed mt.sleepy_speed
-  	try_roost
+	* see monsters on scanner
 
-  5	accelerate_to ship mt.kamikaze_accel
+	* higher top speed
 
-  6	hover mt.shake_rate
+	* see whole map on scanner
 
-  7	explode
+	* faster shield recovery
 
-  8	circle_to ship, mt.turn_rate, mt.speed
-  	if(mt.can_shoot) shoot
+	* booby trap (releases monsters)
 
-  9	circle_to centre mt.turn_rate, mt.speed
-  	max_speed mt.sleepy_speed
-  	try_roost
-
-  10	circle_to center mt.turn_rate, mt.speed
-  	if distance to ship < mt.eyesight then mood 2
 
 --[[ bits are laid out as
 
@@ -78,36 +68,4 @@
  printh("mushroom_prob = " .. world.mushroom_prob)
  if(world.grass) printh("grass")
 ]]
-
-
-- powerups should be more gradual, should accumulate, should not time out, but
-  should vanish when you die
-
-  maybe bounce and rate should time out, but spread should accumulate?
-
-  cap spread at 3 way?
-
-- seeing some tile errors on mushrooms
-
-- enter portal, it vanishes, world continues for 60 frames, then black
-
-- veg could increase drag
-
-- reread code, fix stuff
-
-- crabs walk around edges and wake other monsters
-
-  crabs are very light sleepers
-
-- powerups in treasure chests
-
-	* see monsters on scanner
-
-	* higher top speed
-
-	* see whole map on scanner
-
-	* faster shield recovery
-
-	* booby trap (releases monsters)
 
