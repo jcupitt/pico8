@@ -1,15 +1,7 @@
-- reread code, minimise more
+- use a random erosion of some sort to make the edges of planets more
+  interesting
 
-- level needs to be property of monster, not mt
-
-  we can have a level with level 3 octos, but level 1 spawners
-
-  the spawner will make level 1 octos, but we don't want to set .level in mt,
-  or that'll stop our l3 octos 
-
-- seeing some tile errors on mushrooms
-
-- enter portal, it vanishes, world continues for 60 frames, then black
+- make level change other monster params
 
 - veg could increase drag
 

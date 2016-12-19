@@ -24,7 +24,7 @@ function add_particle(x, y)
  return p
 end
 
-function explosion(actor, m)
+function explosion(actor, m, c)
  if(#particles > 200) return
 
  for n = 1, m + m * 2 * rnd() do
@@ -37,24 +37,8 @@ function explosion(actor, m)
   p.life = 40 * rnd() + 5
   p.size = rnd()
   p.drag = 0.02
- end
-end
 
-function splat(actor, m, c)
- if(#particles > 200) return
-
- for n = 1, m + m * 2 * rnd() do
-  local p = add_particle(actor.x + 4, actor.y + 4)
-  local a = rnd()
-  local s = rnd() * (2 + 0.05 * m)
-
-  p.dx = s * sin(a)
-  p.dy = s * cos(a)
-  p.life = 40 * rnd() + 5
-  p.size = rnd()
-  p.drag = 0.02
-  p.c = c
-  p.dc = 0
+  if(c) p.c = c p.dc = 0
  end
 end
 
@@ -91,18 +75,20 @@ function reanimate_circle(actor)
  end
 end
 
-function reanimate_in(actor)
+function warp(actor, distance, sign, drag, c)
  for n = 1, 40 do
   local a = n / 40
-  local px = actor.x + 50 * cos(a)
-  local py = actor.y + 50 * sin(a)
+  local px = actor.x + distance * cos(a)
+  local py = actor.y + distance * sin(a)
   local p = add_particle(px, py)
 
-  p.dx = 0.1 * cos(a + 0.5)
-  p.dy = 0.1 * sin(a + 0.5)
+  p.dx = 0.1 * cos(a + sign)
+  p.dy = 0.1 * sin(a + sign)
   p.life = 50
   p.size = 3
-  p.drag = -0.1
+  p.drag = drag
+
+  if(c) p.c = c p.dc = 0
  end
 end
 
@@ -223,9 +209,9 @@ function growth(s)
  return fget(s, 2)
 end
 
--- test sprite for plain rock, ie. not a sleeping monster or rocky veg
+-- test sprite for plain rock, ie. not a sleeping monster 
 function plainrock(s)
- return rocky(s) and not monster(s) and not growth(s)
+ return rocky(s) and not monster(s) 
 end
 
 -- roost: first is the sprite we show in this cell if there's a wall to the
@@ -822,11 +808,6 @@ function add_power(actor)
  return p
 end
 
-function next_level()
- world_number += 1
- enter_world(world_number)
-end
-
 function add_portal(x, y)
  local p = add_actor(x, y)
 
@@ -861,17 +842,15 @@ function hit_ship()
  if(not alive()) return
  if(invulnerability > 0) return
 
- explosion(ship, 100)
- sfx(8)
-
  if ship.shields > 0 then
+  explosion(ship, 10)
   ship.shields -= 1
   ship.shield_timer = 500
  else
+  sfx(8)
+  explosion(ship, 100)
   n_ships += 1
   reanimate_timer = 270
-  streams = 1
-  reload_time = 20
  end
 end
 
@@ -921,11 +900,12 @@ function update_ship(s)
  if reanimate_timer == 69 then
   reanimate_circle(s)
  elseif reanimate_timer == 40 then
-  reanimate_in(s)
+  warp(s, 50, 0.5, -0.1)
  elseif reanimate_timer == 1 then
   s.shields = 3
   invulnerability = 30
- elseif alive() then
+ elseif reanimate_timer == 0 then
+  -- alive
   if btn(4) then
    -- strafe mode
    local t, a
@@ -1201,8 +1181,8 @@ octo = {
 
  transition = {
   [1] = {200, {0.5, 4}, {1, 2}},
-  [2] = {100, {0.5, 3}, {1, 1}},
-  [3] = {500, {0.5, 1}, {1, 2}},
+  [2] = {200, {0.5, 3}, {1, 1}},
+  [3] = {100, {0.5, 1}, {1, 2}},
   [4] = {500, {1, 1}},
   [5] = {200, {1, 3}},
  },
@@ -1284,7 +1264,7 @@ segment = {
     end
    else
     s.l = max(0, s.l - 1)
-    if(s.l == 0) remove_actor(s) splat(s, 10, s.mt.recolour[s.mt.level]) 
+    if(s.l == 0) remove_actor(s) explosion(s, 10, s.mt.recolour[s.mt.level]) 
    end
   end
  }
@@ -1486,7 +1466,7 @@ spawn = {
     -- 5 means we don't spawn spawns or trees
     local n = flr(rnd() * 5 + 1)
     local mt = monster_table[n]
-    mt.level = spawn.level
+    if(not mt.level) mt.level = spawn.level
     local nm = add_monster(m.x, m.y, mt)
 
     nm.angle = m.angle
@@ -1538,7 +1518,7 @@ eye_jiggle = {[0] = 0, 1, 0, -1}
 
 -- eye sprites, index with mood
 -- for sleepy (4), normal plus high blink
-eye_sprites = {77, 79, 80, 77, 81, 78, 77, 79}
+eye_sprites = {77, 79, 80, 77, 81, 78, 77, 79, 77, 77}
 
 monster_update_actions = {
  [1] = function (m) 
@@ -1564,7 +1544,7 @@ monster_update_actions = {
   hover(m, m.mt.shake_rate) 
  end,
  [7] = function (m)
-  splat(m, 10, m.mt.recolour[m.mt.level]) 
+  explosion(m, 10, m.mt.recolour[m.mt.level]) 
   remove_actor(m)
  end,
  [8] = function (m)
@@ -1684,7 +1664,7 @@ function hit_monster(m)
 
  m.health = max(0, m.health - 1)
  if m.health == 0 then
-  splat(m, 10, m.mt.recolour[m.mt.level]) 
+  explosion(m, 10, m.mt.recolour[m.mt.level]) 
   add_power(m)
   remove_actor(m)
  end
@@ -1837,23 +1817,30 @@ function _update60()
  powerdown_timer = max(0, powerdown_timer - 1)
  if(powerdown_timer == 1 and powerdown_callback) powerdown_callback()
 
- if btn(5, 1) then
-  next_level()
- end
+ --if alive() and btn(5, 1) then
+  --reanimate_timer = 1100
+  --remove_actor(portal)
+ --end
 
- if distance(portal, ship) < 10 then
-  if world_number >= 10 then
-   init_game()
-  end
+ grow_veg(growth_rate) 
 
-  if diamonds >= 10 then
-   next_level()
+ if alive() and distance(portal, ship) < 10 then
+  if diamonds >= 10 or world_number >= 10 then
+   reanimate_timer = 1100
+   remove_actor(portal)
   else
    set_message("collect 10 diamonds to open")
   end
  end
 
- grow_veg(growth_rate) 
+ if reanimate_timer > 1094 and reanimate_timer % 3 == 0 then
+  warp(portal, 5, 0, -0.2, 8 + (reanimate_timer - 1094) / 2)
+ elseif reanimate_timer == 1000 then
+  world_number += 1
+  enter_world(world_number)
+ elseif reanimate_timer == 300 then
+  init_game()
+ end
 end
 
 -- start draw
@@ -1914,7 +1901,7 @@ function draw_scanner()
    end
 
    c = 0
-   if(rocky(v)) c = 4
+   if(rocky(v)) c = world_mapc
    if(monster(v)) c = 8
    if(v == 13) c = 10
 
@@ -1922,20 +1909,25 @@ function draw_scanner()
   end
  end
 
- for i = 1, #actors do
-  local m = actors[i]
+ beacon_timer = (beacon_timer + 1) % 10
 
-  if(m.monster) pset(m.cx - bx, m.cy - by, 8)
+ if beacon_timer < 8 then
+  for i = 1, #actors do
+   local m = actors[i]
+ 
+   if(m.monster) pset(m.cx - bx, m.cy - by, 8)
+  end
  end
 
- beacon_timer = (beacon_timer + 1) % 10
- if(beacon_timer < 5) pset(max(0, min(127, 64 - bx)), max(0, min(127, 32 - by)), 7)
+ if beacon_timer < 5 then 
+  pset(max(0, min(127, 64 - bx)), max(0, min(127, 32 - by)), 7)
+ end
 
  pset(64, 64, 7)
  rect(56, 56, 72, 72, 7)
 
  color(5)
- print("world " .. world_number, 80, 110)
+ print("world " .. world_number, 99, 122)
 end
 
 instructions = {
@@ -1958,6 +1950,18 @@ instructions = {
  "reach the centre",
  "of the tenth asteroid",
  "to find your goal!",
+}
+
+congrats = {
+ "",
+ "congratuations!",
+ "",
+ "you have rescued",
+ "the silver sixpence",
+ "from the centre of the pudding!",
+ "",
+ "",
+ "",
 }
 
 function _draw()
@@ -1984,11 +1988,16 @@ function _draw()
 
  draw_message()
 
- if alive() and instruction_counter <= #instructions then
+ if alive() and instruction_counter < #instructions then
   color(7)
-  ctext(instructions[instruction_counter], 24)
-  instruction_timer = (instruction_timer + 1) % 120
-  if(instruction_timer == 0) instruction_counter += 1
+  ctext(instructions[flr(instruction_counter) + 1], 24)
+  instruction_counter += 1 / 120
+ end
+
+ if world_number == 11 and congrats_counter < #congrats then
+  color(7)
+  ctext(congrats[flr(congrats_counter) + 1], 24)
+  congrats_counter += 1 / 120
  end
 
  --color(5)
@@ -2115,6 +2124,9 @@ label_dest = {
 }
 
 function enter_world(n)
+ -- for the congrats world, just let things run on
+ if(n == 11) return
+
  rectfill(0, 0, 127, 127, 0)
  -- actors ref map cells, map cells ref actors, we have to break the links
  -- before we reset
@@ -2169,11 +2181,12 @@ function init_game()
  diamonds = 0
  n_ships = 1
  bombs = 10
- instruction_counter = 1
- instruction_timer = 0
+ instruction_counter = 0
+ congrats_counter = 0
  world_number = 1
  streams = 1
  reload_time = 20
+ warp_timer = 0
 
  music(37)
  enter_world(world_number)
